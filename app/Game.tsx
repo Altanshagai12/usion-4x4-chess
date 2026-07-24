@@ -1,35 +1,26 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ChessState,
+  Color,
+  GLYPHS,
+  NAMES,
+  Piece,
+  RESERVE_ORDER,
+  col,
+  createInitialChessState,
+  getMoves,
+  reduceChess,
+  row,
+} from "./chess-engine";
+import { useUsionGame } from "./useUsionGame";
 
-type Color = "white" | "black";
-type PieceType = "pawn" | "rook" | "knight" | "bishop" | "king" | "queen";
 type Screen = "home" | "rules" | "game";
-type Piece = { id: string; color: Color; type: PieceType };
-type Square = Piece | null;
 type Selection =
   | { source: "board"; index: number }
   | { source: "reserve"; color: Color; id: string }
   | null;
-
-const GLYPHS: Record<Color, Record<PieceType, string>> = {
-  white: { pawn: "♙", rook: "♖", knight: "♘", bishop: "♗", king: "♔", queen: "♕" },
-  black: { pawn: "♟", rook: "♜", knight: "♞", bishop: "♝", king: "♚", queen: "♛" },
-};
-
-const NAMES: Record<PieceType, string> = {
-  pawn: "Pawn",
-  rook: "Rook",
-  knight: "Knight",
-  bishop: "Bishop",
-  king: "King",
-  queen: "Queen Pawn",
-};
-
-const RESERVE_ORDER: PieceType[] = [
-  "rook", "knight", "bishop", "king", "bishop", "knight", "rook",
-  "pawn", "pawn", "pawn", "pawn", "pawn", "pawn", "pawn",
-];
 
 const RULES = [
   {
@@ -49,82 +40,6 @@ const RULES = [
   },
 ] as const;
 
-function createReserve(color: Color): Piece[] {
-  return RESERVE_ORDER.map((type, index) => ({
-    id: `${color}-${type}-${index}`,
-    color,
-    type,
-  }));
-}
-
-const row = (index: number) => Math.floor(index / 4);
-const col = (index: number) => index % 4;
-const inBounds = (r: number, c: number) => r >= 0 && r < 4 && c >= 0 && c < 4;
-
-function getMoves(board: Square[], from: number): number[] {
-  const piece = board[from];
-  if (!piece) return [];
-  const r = row(from);
-  const c = col(from);
-  const moves: number[] = [];
-
-  const addStep = (nr: number, nc: number) => {
-    if (!inBounds(nr, nc)) return;
-    const target = board[nr * 4 + nc];
-    if (!target || target.color !== piece.color) moves.push(nr * 4 + nc);
-  };
-  const addRay = (dr: number, dc: number) => {
-    let nr = r + dr;
-    let nc = c + dc;
-    while (inBounds(nr, nc)) {
-      const targetIndex = nr * 4 + nc;
-      const target = board[targetIndex];
-      if (!target) moves.push(targetIndex);
-      else {
-        if (target.color !== piece.color) moves.push(targetIndex);
-        break;
-      }
-      nr += dr;
-      nc += dc;
-    }
-  };
-
-  if (piece.type === "pawn") {
-    const direction = piece.color === "white" ? -1 : 1;
-    const nr = r + direction;
-    if (inBounds(nr, c) && !board[nr * 4 + c]) moves.push(nr * 4 + c);
-    for (const dc of [-1, 1]) {
-      const nc = c + dc;
-      if (!inBounds(nr, nc)) continue;
-      const target = board[nr * 4 + nc];
-      if (target && target.color !== piece.color) moves.push(nr * 4 + nc);
-    }
-  }
-
-  if (piece.type === "knight") {
-    for (const [dr, dc] of [
-      [-2, -1], [-2, 1], [-1, -2], [-1, 2],
-      [1, -2], [1, 2], [2, -1], [2, 1],
-    ]) addStep(r + dr, c + dc);
-  }
-
-  if (piece.type === "king") {
-    for (let dr = -1; dr <= 1; dr += 1) {
-      for (let dc = -1; dc <= 1; dc += 1) {
-        if (dr || dc) addStep(r + dr, c + dc);
-      }
-    }
-  }
-
-  if (piece.type === "rook" || piece.type === "queen") {
-    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) addRay(dr, dc);
-  }
-  if (piece.type === "bishop" || piece.type === "queen") {
-    for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) addRay(dr, dc);
-  }
-  return moves;
-}
-
 function PieceGlyph({ piece, small = false }: { piece: Piece; small?: boolean }) {
   return (
     <span className={`piece-glyph piece-${piece.color}${small ? " piece-small" : ""}`} aria-hidden="true">
@@ -134,7 +49,11 @@ function PieceGlyph({ piece, small = false }: { piece: Piece; small?: boolean })
 }
 
 function ReserveTray({
-  color, pieces, active, selection, onSelect,
+  color,
+  pieces,
+  active,
+  selection,
+  onSelect,
 }: {
   color: Color;
   pieces: Piece[];
@@ -171,59 +90,82 @@ function ReserveTray({
   );
 }
 
+function ConnectionNotice({
+  connection,
+  playerCount,
+  error,
+  recover,
+}: {
+  connection: string;
+  playerCount: number;
+  error: string;
+  recover: () => void;
+}) {
+  if (connection === "ready") return null;
+  const copy: Record<string, string> = {
+    connecting: "Connecting to Usions…",
+    waiting: "Waiting for your opponent to join…",
+    recovering: "Reconnecting and restoring the match…",
+    failed: error || "The match connection needs attention.",
+  };
+  return (
+    <div className={`connection-notice connection-${connection}`} role="status">
+      <span className="connection-spinner" aria-hidden="true" />
+      <div>
+        <strong>{copy[connection] ?? "Preparing the match…"}</strong>
+        {connection === "waiting" && <small>{playerCount} / 2 players connected</small>}
+      </div>
+      {connection === "failed" && <button onClick={recover}>RETRY</button>}
+    </div>
+  );
+}
+
 export default function Game() {
+  const usion = useUsionGame();
   const [screen, setScreen] = useState<Screen>("home");
   const [rulePage, setRulePage] = useState(0);
-  const [board, setBoard] = useState<Square[]>(() => Array(16).fill(null));
-  const [reserves, setReserves] = useState<Record<Color, Piece[]>>(() => ({
-    white: createReserve("white"),
-    black: createReserve("black"),
-  }));
-  const [turn, setTurn] = useState<Color>("white");
+  const [localState, setLocalState] = useState<ChessState>(() => createInitialChessState());
   const [selection, setSelection] = useState<Selection>(null);
-  const [winner, setWinner] = useState<Color | null>(null);
   const [soundOn, setSoundOn] = useState(true);
-  const [captures, setCaptures] = useState<Record<Color, number>>({ white: 0, black: 0 });
-  const [lastAction, setLastAction] = useState("White deploys first");
+  const state = usion.active ? usion.state : localState;
+  const { board, reserves, turn, winner, captures } = state;
 
+  useEffect(() => {
+    if (usion.active) setScreen("game");
+  }, [usion.active]);
+  useEffect(() => setSelection(null), [state.moveCount]);
+
+  const canInteract = !winner && (usion.active ? usion.canAct : true);
   const legalTargets = useMemo(() => {
-    if (!selection) return [];
+    if (!selection || !canInteract) return [];
     if (selection.source === "reserve") {
       return board.flatMap((square, index) => (square ? [] : [index]));
     }
     return getMoves(board, selection.index);
-  }, [board, selection]);
+  }, [board, canInteract, selection]);
 
-  const resetGame = useCallback(() => {
-    setBoard(Array(16).fill(null));
-    setReserves({ white: createReserve("white"), black: createReserve("black") });
-    setTurn("white");
-    setSelection(null);
-    setWinner(null);
-    setCaptures({ white: 0, black: 0 });
-    setLastAction("White deploys first");
-    setScreen("game");
-  }, []);
-
-  const finishTurn = useCallback((
-    nextBoard: Square[],
-    nextReserves: Record<Color, Piece[]>,
-    action: string,
+  const dispatch = async (
+    type: "deploy" | "move" | "reset",
+    data: Record<string, unknown>,
   ) => {
-    const rival: Color = turn === "white" ? "black" : "white";
-    const rivalOnBoard = nextBoard.some((piece) => piece?.color === rival);
-    if (!rivalOnBoard && nextReserves[rival].length === 0) {
-      setWinner(turn);
-      setLastAction(`${turn === "white" ? "White" : "Black"} wins!`);
-    } else {
-      setTurn(rival);
-      setLastAction(action);
+    if (usion.active) {
+      await usion.commit(type, data);
+      return;
     }
+    setLocalState((current) =>
+      reduceChess(current, { type, data: { ...data, color: current.turn } }),
+    );
+  };
+
+  const resetGame = () => {
     setSelection(null);
-  }, [turn]);
+    if (usion.active && winner) void dispatch("reset", {});
+    else if (!usion.active) setLocalState(createInitialChessState());
+    setScreen("game");
+  };
 
   const selectReserve = (piece: Piece) => {
-    if (winner || piece.color !== turn) return;
+    if (!canInteract || piece.color !== turn) return;
     setSelection((current) =>
       current?.source === "reserve" && current.id === piece.id
         ? null
@@ -232,56 +174,29 @@ export default function Game() {
   };
 
   const selectSquare = (index: number) => {
-    if (winner) return;
+    if (!canInteract) return;
     const target = board[index];
     if (!selection) {
       if (target?.color === turn) setSelection({ source: "board", index });
       return;
     }
-
     if (selection.source === "reserve") {
       if (target || !legalTargets.includes(index)) {
         if (target?.color === turn) setSelection({ source: "board", index });
         return;
       }
-      const piece = reserves[turn].find((item) => item.id === selection.id);
-      if (!piece) return;
-      const nextBoard = [...board];
-      nextBoard[index] = piece;
-      const nextReserves = {
-        ...reserves,
-        [turn]: reserves[turn].filter((item) => item.id !== piece.id),
-      };
-      setBoard(nextBoard);
-      setReserves(nextReserves);
-      finishTurn(nextBoard, nextReserves, `${turn === "white" ? "White" : "Black"} deployed a ${NAMES[piece.type]}`);
+      setSelection(null);
+      void dispatch("deploy", { pieceId: selection.id, index });
       return;
     }
-
     if (target?.color === turn) {
       setSelection({ source: "board", index });
       return;
     }
     if (!legalTargets.includes(index)) return;
-    const moving = board[selection.index];
-    if (!moving) return;
-    const nextBoard = [...board];
-    const captured = nextBoard[index];
-    nextBoard[selection.index] = null;
-    const destinationRow = row(index);
-    const promoted =
-      moving.type === "pawn" &&
-      ((moving.color === "white" && destinationRow === 0) ||
-        (moving.color === "black" && destinationRow === 3));
-    nextBoard[index] = promoted ? { ...moving, type: "queen" } : moving;
-    setBoard(nextBoard);
-    if (captured) {
-      setCaptures((current) => ({ ...current, [turn]: current[turn] + 1 }));
-    }
-    const verb = captured
-      ? `captured ${NAMES[captured.type]}`
-      : promoted ? "promoted a pawn" : `moved ${NAMES[moving.type]}`;
-    finishTurn(nextBoard, reserves, `${turn === "white" ? "White" : "Black"} ${verb}`);
+    const from = selection.index;
+    setSelection(null);
+    void dispatch("move", { from, to: index });
   };
 
   if (screen === "home") {
@@ -293,11 +208,15 @@ export default function Game() {
               <span key={index}>{index === 2 ? "♜" : index === 13 ? "♙" : ""}</span>
             ))}
           </div>
-          <p className="eyebrow">QUICK TACTICAL DUEL</p>
+          <p className="eyebrow">QUICK ONLINE DUEL</p>
           <h1><span>4×4 CHESS</span><strong>LAST MAN STAND</strong></h1>
-          <p className="home-copy">Deploy. Move. Capture. On this tiny board, every square changes the battle.</p>
+          <p className="home-copy">
+            Invite a friend in Usions and battle from two different phones.
+          </p>
           <div className="home-actions">
-            <button className="primary-button" onClick={resetGame}><span aria-hidden="true">♟</span> 2 PLAYERS</button>
+            <button className="primary-button" onClick={resetGame}>
+              <span aria-hidden="true">♟</span> {usion.active ? "RETURN TO MATCH" : "LOCAL DEMO"}
+            </button>
             <button className="secondary-button" onClick={() => setScreen("rules")}>HOW TO PLAY?</button>
           </div>
         </section>
@@ -335,24 +254,34 @@ export default function Game() {
             {RULES.map((_, index) => <span className={index === rulePage ? "active" : ""} key={index} />)}
           </div>
           <div className="rules-actions">
-            <button className="icon-button" onClick={() => rulePage === 0 ? setScreen("home") : setRulePage((page) => page - 1)} aria-label={rulePage === 0 ? "Back home" : "Previous rule"}>←</button>
+            <button className="icon-button" onClick={() => rulePage === 0 ? setScreen(usion.active ? "game" : "home") : setRulePage((page) => page - 1)} aria-label="Previous">←</button>
             <button className="primary-button rules-next" onClick={() => {
-              if (rulePage === RULES.length - 1) resetGame();
+              if (rulePage === RULES.length - 1) setScreen("game");
               else setRulePage((page) => page + 1);
-            }}>{rulePage === RULES.length - 1 ? "PLAY NOW" : "NEXT"} →</button>
+            }}>{rulePage === RULES.length - 1 ? "BACK TO GAME" : "NEXT"} →</button>
           </div>
         </section>
       </main>
     );
   }
 
+  const myLabel = usion.active && usion.userColor
+    ? `YOU ARE ${usion.userColor.toUpperCase()}`
+    : `${turn === "white" ? "PLAYER 1" : "PLAYER 2"}'S TURN`;
+
   return (
     <main className="game-shell play-screen">
+      <ConnectionNotice
+        connection={usion.connection}
+        playerCount={usion.playerIds.length}
+        error={usion.error}
+        recover={usion.recover}
+      />
       <header className="game-header">
         <button className="icon-button" onClick={() => setScreen("home")} aria-label="Home">⌂</button>
         <div className="turn-pill" aria-live="polite">
           <span className={`turn-dot turn-${turn}`} />
-          {winner ? `${winner === "white" ? "PLAYER 1" : "PLAYER 2"} WINS` : `${turn === "white" ? "PLAYER 1" : "PLAYER 2"}'S TURN`}
+          {winner ? `${winner === "white" ? "WHITE" : "BLACK"} WINS` : usion.active ? `${myLabel} · ${turn.toUpperCase()}'S TURN` : myLabel}
         </div>
         <button className="icon-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "Mute sound" : "Turn sound on"}>
           {soundOn ? "♪" : "×"}
@@ -360,7 +289,7 @@ export default function Game() {
       </header>
 
       <div className="game-stage">
-        <ReserveTray color="black" pieces={reserves.black} active={turn === "black" && !winner} selection={selection} onSelect={selectReserve} />
+        <ReserveTray color="black" pieces={reserves.black} active={turn === "black" && canInteract} selection={selection} onSelect={selectReserve} />
         <section className="board-wrap">
           <div className="capture-score capture-score-black"><span>♙</span> {captures.black}</div>
           <div className="board" role="grid" aria-label="4 by 4 chessboard">
@@ -384,14 +313,14 @@ export default function Game() {
           </div>
           <div className="capture-score capture-score-white"><span>♟</span> {captures.white}</div>
         </section>
-        <ReserveTray color="white" pieces={reserves.white} active={turn === "white" && !winner} selection={selection} onSelect={selectReserve} />
+        <ReserveTray color="white" pieces={reserves.white} active={turn === "white" && canInteract} selection={selection} onSelect={selectReserve} />
       </div>
 
       <footer className="game-footer">
-        <p>{lastAction}</p>
+        <p>{usion.pending ? "Sending move…" : state.lastAction}</p>
         <div>
           <button className="text-button" onClick={() => setScreen("rules")}>RULES</button>
-          <button className="text-button" onClick={resetGame}>RESTART</button>
+          {!usion.active && <button className="text-button" onClick={resetGame}>RESTART</button>}
         </div>
       </footer>
 
@@ -403,8 +332,8 @@ export default function Game() {
           <section className="winner-card">
             <span className={`winner-piece winner-${winner}`}>{winner === "white" ? "♕" : "♛"}</span>
             <p>LAST MAN STANDING</p>
-            <h2>{winner === "white" ? "PLAYER 1" : "PLAYER 2"} WINS!</h2>
-            <button className="primary-button" onClick={resetGame}>PLAY AGAIN</button>
+            <h2>{winner === "white" ? "WHITE" : "BLACK"} WINS!</h2>
+            <button className="primary-button" onClick={resetGame}>REMATCH</button>
             <button className="text-button" onClick={() => setScreen("home")}>BACK HOME</button>
           </section>
         </div>

@@ -39,7 +39,13 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <script
+          src="https://usions.com/sdk/v3/3.0.0-next.7/usion-sdk.js"
+          defer
+        />
+      </body>
     </html>
   );
 }

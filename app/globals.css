@@ -162,6 +162,41 @@ h1 strong {
 }
 
 .play-screen { display: grid; grid-template-rows: auto 1fr auto; min-height: 100svh; }
+.connection-notice {
+  position: fixed;
+  z-index: 15;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: min(calc(100% - 28px), 440px);
+  padding: 12px 14px;
+  border: 2px solid rgba(255,255,255,.22);
+  border-radius: 16px;
+  background: rgba(45,14,101,.92);
+  box-shadow: 0 8px 24px rgba(28,4,67,.34);
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+.connection-notice div { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.connection-notice strong { font-size: .82rem; }
+.connection-notice small { color: rgba(255,255,255,.68); font-size: .68rem; }
+.connection-notice button {
+  cursor: pointer; border: 0; border-radius: 9px; padding: 8px 10px;
+  background: var(--yellow); color: var(--ink); font-size: .7rem; font-weight: 1000;
+}
+.connection-spinner {
+  width: 18px; height: 18px; flex: 0 0 auto;
+  border: 3px solid rgba(255,255,255,.2); border-top-color: var(--yellow);
+  border-radius: 50%; animation: connection-spin .9s linear infinite;
+}
+.connection-waiting .connection-spinner {
+  border: 0; background: var(--yellow); animation: connection-pulse 1.1s ease-in-out infinite;
+}
+.connection-failed .connection-spinner { border: 0; background: #ff6f77; animation: none; }
+@keyframes connection-spin { to { transform: rotate(360deg); } }
+@keyframes connection-pulse { 50% { opacity: .35; transform: scale(.72); } }
 .game-header {
   position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between;
   width: min(100%,620px); margin: 0 auto; padding: 12px 14px 6px;

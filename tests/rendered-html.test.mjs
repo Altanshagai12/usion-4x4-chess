@@ -23,7 +23,8 @@ test("server-renders the 4x4 chess home screen", async () => {
   assert.match(html, /<title>4×4 Chess: Last Man Stand<\/title>/i);
   assert.match(html, /4×4 CHESS/);
   assert.match(html, /LAST MAN STAND/);
-  assert.match(html, /2 PLAYERS/);
+  assert.match(html, /LOCAL DEMO/);
   assert.match(html, /HOW TO PLAY/);
+  assert.match(html, /3\.0\.0-next\.7\/usion-sdk\.js/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
