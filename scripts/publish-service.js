@@ -23,9 +23,9 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const SERVICE = Object.freeze({
   name: "4×4 Chess: Last Man Stand",
   description:
-    "Deploy a reserve piece or move one already on the 4×4 board. No check, " +
-    "no checkmate — capture every rival piece, kings included, to be the last " +
-    "player standing.",
+    "Deploy a pawn from your tray or move one already on the 4×4 board. Walk a " +
+    "pawn to the far rank to promote it to a Queen Pawn. There is no king and " +
+    "no checkmate — wipe out every rival pawn to be the last player standing.",
   service_type: "game",
   cost: 0,
   tags: Object.freeze([
