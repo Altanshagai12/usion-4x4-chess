@@ -42,7 +42,7 @@ export default function RootLayout({
       <body>
         {children}
         <script
-          src="https://usions.com/sdk/v3/3.0.0-next.7/usion-sdk.js"
+          src="https://usions.com/usion-sdk.js"
           defer
         />
       </body>

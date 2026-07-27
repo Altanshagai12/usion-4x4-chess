@@ -131,9 +131,14 @@ export default function Game() {
   const { board, reserves, turn, winner, captures } = state;
 
   useEffect(() => {
-    if (usion.active) setScreen("game");
+    if (!usion.active) return;
+    const frame = requestAnimationFrame(() => setScreen("game"));
+    return () => cancelAnimationFrame(frame);
   }, [usion.active]);
-  useEffect(() => setSelection(null), [state.moveCount]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setSelection(null));
+    return () => cancelAnimationFrame(frame);
+  }, [state.moveCount]);
 
   const canInteract = !winner && (usion.active ? usion.canAct : true);
   const legalTargets = useMemo(() => {

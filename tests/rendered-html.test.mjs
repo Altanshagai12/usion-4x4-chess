@@ -25,6 +25,6 @@ test("server-renders the 4x4 chess home screen", async () => {
   assert.match(html, /LAST MAN STAND/);
   assert.match(html, /LOCAL DEMO/);
   assert.match(html, /HOW TO PLAY/);
-  assert.match(html, /3\.0\.0-next\.7\/usion-sdk\.js/);
+  assert.match(html, /https:\/\/usions\.com\/usion-sdk\.js/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
