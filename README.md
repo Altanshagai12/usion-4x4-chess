@@ -12,12 +12,12 @@ phones using the public SDK's ordered game transport.
 ## Rules
 
 Each side is dealt a fourteen-piece tray: seven back-rank pieces (rook, knight,
-bishop, king, bishop, knight, rook) over seven pawns.
+bishop, **queen**, bishop, knight, rook) over seven pawns. There is no king.
 
 - On each turn, either deploy one piece from your tray onto an empty square or
   move a piece already on the board.
-- Pieces use standard chess movement. There is no check and no checkmate, so a
-  king is captured like any other piece.
+- Pieces use standard chess movement. With no king there is no check and no
+  checkmate — every piece can simply be taken.
 - A pawn may **not** be deployed straight onto its promotion rank; promotion has
   to be walked into. Every other piece can drop on any free square.
 - Reaching the far rank promotes a pawn to a Queen Pawn.
@@ -32,6 +32,11 @@ bishop, king, bishop, knight, rook) over seven pawns.
 - Inside Usions the lobby holds the screen until both seats are connected, and
   the board is live only on your own turn — the two players always play from
   their own devices. Offline hot-seat exists only outside the Usions host.
+- Each player views the board from their own side: your army is on the near
+  rank with your tray beneath it, so black sees the board rotated 180°.
+- Piece glyphs carry the U+FE0E text-presentation selector. Without it iOS
+  draws U+265F with the colour emoji font, which ignores `color`, and the white
+  army ends up holding black pawns on a phone while the web build looks fine.
 
 ## Usions integration
 

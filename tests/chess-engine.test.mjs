@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  GLYPHS,
   RESERVE_ORDER,
   canDeploy,
   createInitialChessState,
@@ -27,10 +28,22 @@ test("each side is dealt the full fourteen-piece tray", () => {
   assert.deepEqual(state.reserves.white.map((piece) => piece.type), RESERVE_ORDER);
   assert.deepEqual(
     RESERVE_ORDER.slice(0, 7),
-    ["rook", "knight", "bishop", "king", "bishop", "knight", "rook"],
+    ["rook", "knight", "bishop", "queen", "bishop", "knight", "rook"],
   );
   assert.equal(RESERVE_ORDER.filter((type) => type === "pawn").length, 7);
   assert.equal(state.turn, "white");
+});
+
+test("every glyph is pinned to text presentation", () => {
+  // iOS renders U+265F (BLACK CHESS PAWN) with the colour emoji font unless the
+  // U+FE0E selector follows it. That font ignores `color`, so without this the
+  // white army shows black pawns on a phone while the web build looks right.
+  for (const [type, glyph] of Object.entries(GLYPHS)) {
+    assert.ok(glyph.endsWith("︎"), `${type} must request text presentation`);
+    assert.equal([...glyph].length, 2, `${type} is one code point plus selector`);
+  }
+  assert.equal(GLYPHS.pawn, "♟︎");
+  assert.equal(Object.keys(GLYPHS).includes("king"), false);
 });
 
 test("deployments are ordered and reject an out-of-turn action", () => {
@@ -83,7 +96,7 @@ test("only pawns are restricted — other pieces drop on any free square", () =>
   const initial = createInitialChessState();
   const whiteRook = initial.reserves.white.find((piece) => piece.type === "rook");
 
-  for (const type of ["rook", "knight", "bishop", "king", "queen"]) {
+  for (const type of ["rook", "knight", "bishop", "queen"]) {
     assert.equal(canDeploy(initial.board, "white", 0, type), true, type);
     assert.equal(getDeployTargets(initial.board, "white", type).length, 16, type);
   }
@@ -161,8 +174,8 @@ test("a rival left with no legal action loses instead of deadlocking", () => {
 });
 
 test("stale schema versions are rebuilt instead of trusted", () => {
-  const legacy = { schemaVersion: 2, board: [], reserves: {}, turn: "white" };
+  const legacy = { schemaVersion: 3, board: [], reserves: {}, turn: "white" };
   const rebuilt = reduceChess(legacy, { type: "noop", data: {} });
-  assert.equal(rebuilt.schemaVersion, 3);
+  assert.equal(rebuilt.schemaVersion, 4);
   assert.equal(rebuilt.reserves.white.length, RESERVE_ORDER.length);
 });

@@ -24,8 +24,8 @@ const SERVICE = Object.freeze({
   name: "4×4 Chess: Last Man Stand",
   description:
     "Deploy a piece from your tray or move one already on the 4×4 board. No " +
-    "check, no checkmate — capture every rival piece, kings included, to be " +
-    "the last player standing. Two players, two phones.",
+    "king, no check, no checkmate — capture every rival piece to be the last " +
+    "player standing. Two players, two phones.",
   service_type: "game",
   cost: 0,
   tags: Object.freeze([

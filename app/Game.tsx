@@ -6,6 +6,7 @@ import {
   Color,
   GLYPHS,
   NAMES,
+  otherColor,
   Piece,
   PieceType,
   RESERVE_ORDER,
@@ -32,12 +33,12 @@ const RULES = [
   },
   {
     title: "MOVE & CAPTURE LIKE CHESS",
-    copy: "Every piece moves by standard chess rules. There is no check and no checkmate, so even a king can be captured like anything else.",
+    copy: "Every piece moves by standard chess rules. There is no king on the board, so there is no check and no checkmate — every piece can simply be taken.",
     art: "capture",
   },
   {
     title: "PROMOTE & BE THE LAST STANDING",
-    copy: "Walk a pawn to the far rank and it becomes a Queen Pawn. Wipe out the whole rival army, tray included, to win.",
+    copy: "Walk a pawn to the far rank and it becomes a Queen. Wipe out the whole rival army, tray included, to win.",
     art: "win",
   },
 ] as const;
@@ -55,12 +56,14 @@ function PieceGlyph({ piece, small = false }: { piece: Piece; small?: boolean })
 
 function ReserveTray({
   color,
+  label,
   pieces,
   active,
   selection,
   onSelect,
 }: {
   color: Color;
+  label: string;
   pieces: Piece[];
   active: boolean;
   selection: Selection;
@@ -69,7 +72,7 @@ function ReserveTray({
   return (
     <section className={`reserve reserve-${color}${active ? " reserve-active" : ""}`} aria-label={`${color} reserve`}>
       <div className="reserve-label">
-        <span>{color === "black" ? "PLAYER 2" : "PLAYER 1"}</span>
+        <span>{label}</span>
         <strong>{pieces.length}</strong>
       </div>
       <div className="reserve-grid">
@@ -232,7 +235,7 @@ export default function Game() {
         <section className="home-card">
           <div className="mini-board-logo" aria-hidden="true">
             {Array.from({ length: 16 }, (_, index) => (
-              <span key={index}>{index === 2 ? GLYPHS.king : index === 13 ? GLYPHS.pawn : ""}</span>
+              <span key={index}>{index === 2 ? GLYPHS.queen : index === 13 ? GLYPHS.pawn : ""}</span>
             ))}
           </div>
           <p className="eyebrow">QUICK ONLINE DUEL</p>
@@ -253,7 +256,7 @@ export default function Game() {
                   return (
                     <div className={`lobby-seat${filled ? " filled" : ""}`} key={seat}>
                       <span className="lobby-avatar" aria-hidden="true">
-                        {filled ? (seat === 0 ? GLYPHS.king : GLYPHS.queen) : "?"}
+                        {filled ? (seat === 0 ? GLYPHS.rook : GLYPHS.queen) : "?"}
                       </span>
                       <strong>{filled ? (seat === 0 ? "PLAYER 1" : "PLAYER 2") : "WAITING…"}</strong>
                     </div>
@@ -292,7 +295,7 @@ export default function Game() {
         <section className="home-card">
           <div className="mini-board-logo" aria-hidden="true">
             {Array.from({ length: 16 }, (_, index) => (
-              <span key={index}>{index === 2 ? "♛" : index === 13 ? "♟" : ""}</span>
+              <span key={index}>{index === 2 ? GLYPHS.queen : index === 13 ? GLYPHS.pawn : ""}</span>
             ))}
           </div>
           <p className="eyebrow">QUICK ONLINE DUEL</p>
@@ -361,6 +364,15 @@ export default function Game() {
     ? `YOU ARE ${usion.userColor.toUpperCase()}`
     : `${turn === "white" ? "PLAYER 1" : "PLAYER 2"}'S TURN`;
 
+  // Each player looks at the board from their own side: your army sits on the
+  // bottom rank and your tray under it, exactly as it does for the other
+  // player on their phone. Black therefore views the board rotated 180°.
+  const seatColor: Color = usion.userColor ?? "white";
+  const flipped = seatColor === "black";
+  const viewIndex = (slot: number) => (flipped ? 15 - slot : slot);
+  const topColor = otherColor(seatColor);
+  const seated = Boolean(usion.userColor);
+
   return (
     <main className="game-shell play-screen">
       <ConnectionNotice
@@ -383,11 +395,20 @@ export default function Game() {
       </header>
 
       <div className="game-stage">
-        <ReserveTray color="black" pieces={reserves.black} active={turn === "black" && canInteract} selection={selection} onSelect={selectReserve} />
+        <ReserveTray
+          color={topColor}
+          label={seated ? "OPPONENT" : topColor === "white" ? "PLAYER 1" : "PLAYER 2"}
+          pieces={reserves[topColor]}
+          active={turn === topColor && canInteract}
+          selection={selection}
+          onSelect={selectReserve}
+        />
         <section className="board-wrap">
-          <div className="capture-score capture-score-black"><span>{GLYPHS.pawn}</span> {captures.black}</div>
+          <div className="capture-score capture-score-black"><span>{GLYPHS.pawn}</span> {captures[topColor]}</div>
           <div className="board" role="grid" aria-label="4 by 4 chessboard">
-            {board.map((piece, index) => {
+            {Array.from({ length: 16 }, (_, slot) => {
+              const index = viewIndex(slot);
+              const piece = board[index];
               const selected = selection?.source === "board" && selection.index === index;
               const legal = legalTargets.includes(index);
               const capture = legal && !!piece && piece.color !== turn;
@@ -405,9 +426,16 @@ export default function Game() {
               );
             })}
           </div>
-          <div className="capture-score capture-score-white"><span>{GLYPHS.pawn}</span> {captures.white}</div>
+          <div className="capture-score capture-score-white"><span>{GLYPHS.pawn}</span> {captures[seatColor]}</div>
         </section>
-        <ReserveTray color="white" pieces={reserves.white} active={turn === "white" && canInteract} selection={selection} onSelect={selectReserve} />
+        <ReserveTray
+          color={seatColor}
+          label={seated ? "YOU" : seatColor === "white" ? "PLAYER 1" : "PLAYER 2"}
+          pieces={reserves[seatColor]}
+          active={turn === seatColor && canInteract}
+          selection={selection}
+          onSelect={selectReserve}
+        />
       </div>
 
       <footer className="game-footer">

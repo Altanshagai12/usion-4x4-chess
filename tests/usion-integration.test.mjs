@@ -58,6 +58,22 @@ test("a second player arrives through the platform invite, never self-play", asy
   assert.match(game, /INVITE A FRIEND/);
 });
 
+test("each player views the board from their own side", async () => {
+  const game = await readFile(new URL("app/Game.tsx", root), "utf8");
+
+  // Black must not play from the top of the board on their own phone: the
+  // view rotates so your army is always the near side, with your tray under it.
+  assert.match(game, /const seatColor: Color = usion\.userColor \?\? "white"/);
+  assert.match(game, /const flipped = seatColor === "black"/);
+  assert.match(game, /const viewIndex = \(slot: number\) => \(flipped \? 15 - slot : slot\)/);
+  assert.match(game, /const index = viewIndex\(slot\);/);
+
+  // Trays follow the same seating: opponent on top, you on the bottom.
+  assert.match(game, /color=\{topColor\}/);
+  assert.match(game, /color=\{seatColor\}/);
+  assert.match(game, /const topColor = otherColor\(seatColor\)/);
+});
+
 test("the SDK boots inside the mobile WebView, not just an iframe", async () => {
   const hook = await readFile(new URL("app/useUsionGame.ts", root), "utf8");
 

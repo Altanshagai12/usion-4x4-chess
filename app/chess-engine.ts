@@ -1,10 +1,12 @@
 export type Color = "white" | "black";
-export type PieceType = "pawn" | "rook" | "knight" | "bishop" | "king" | "queen";
+// No king in this variant — the crowned tray piece is a queen, and nothing is
+// ever in check.
+export type PieceType = "pawn" | "rook" | "knight" | "bishop" | "queen";
 export type Piece = { id: string; color: Color; type: PieceType };
 export type Square = Piece | null;
 
 export type ChessState = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   board: Square[];
   reserves: Record<Color, Piece[]>;
   turn: Color;
@@ -21,16 +23,23 @@ export type ChessAction = {
   currentTurn?: string;
 };
 
+// U+FE0E is the text-presentation selector. Without it iOS renders U+265F
+// (BLACK CHESS PAWN) with the colour emoji font, which ignores `color` and
+// `-webkit-text-stroke` — so on a phone every pawn came out the same dark
+// glyph and the white army appeared to hold black pawns. It is the only chess
+// code point with an emoji presentation, but the selector is applied to the
+// whole set so no piece can regress the same way.
+const AS_TEXT = "︎";
+
 // One glyph per type, shared by both armies: the two sides must read as the
 // same silhouettes and differ only in colour, so the fill comes from CSS. The
 // solid code points are used for both because outline glyphs cannot be tinted.
 export const GLYPHS: Record<PieceType, string> = {
-  pawn: "♟",
-  rook: "♜",
-  knight: "♞",
-  bishop: "♝",
-  king: "♚",
-  queen: "♛",
+  pawn: `♟${AS_TEXT}`,
+  rook: `♜${AS_TEXT}`,
+  knight: `♞${AS_TEXT}`,
+  bishop: `♝${AS_TEXT}`,
+  queen: `♛${AS_TEXT}`,
 };
 
 export const NAMES: Record<PieceType, string> = {
@@ -38,14 +47,13 @@ export const NAMES: Record<PieceType, string> = {
   rook: "Rook",
   knight: "Knight",
   bishop: "Bishop",
-  king: "King",
-  queen: "Queen Pawn",
+  queen: "Queen",
 };
 
 // Seven back-rank pieces over seven pawns, matching the tray the real game
-// deals each player.
+// deals each player. The crowned centre piece is a queen — there is no king.
 export const RESERVE_ORDER: PieceType[] = [
-  "rook", "knight", "bishop", "king", "bishop", "knight", "rook",
+  "rook", "knight", "bishop", "queen", "bishop", "knight", "rook",
   "pawn", "pawn", "pawn", "pawn", "pawn", "pawn", "pawn",
 ];
 
@@ -69,7 +77,7 @@ function createReserve(color: Color): Piece[] {
 
 export function createInitialChessState(): ChessState {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     board: Array(16).fill(null),
     reserves: { white: createReserve("white"), black: createReserve("black") },
     turn: "white",
@@ -122,11 +130,6 @@ export function getMoves(board: Square[], from: number): number[] {
       [-2, -1], [-2, 1], [-1, -2], [-1, 2],
       [1, -2], [1, 2], [2, -1], [2, 1],
     ]) addStep(r + dr, c + dc);
-  }
-  if (piece.type === "king") {
-    for (let dr = -1; dr <= 1; dr += 1) {
-      for (let dc = -1; dc <= 1; dc += 1) if (dr || dc) addStep(r + dr, c + dc);
-    }
   }
   if (piece.type === "rook" || piece.type === "queen") {
     for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) addRay(dr, dc);
@@ -199,7 +202,7 @@ function finish(state: ChessState, color: Color, action: string): ChessState {
 }
 
 export function reduceChess(state: ChessState, action: ChessAction): ChessState {
-  if (!state || state.schemaVersion !== 3) state = createInitialChessState();
+  if (!state || state.schemaVersion !== 4) state = createInitialChessState();
   if (action.type === "reset" && state.winner) return createInitialChessState();
   const color = action.data?.color;
   if ((color !== "white" && color !== "black") || color !== state.turn || state.winner) {
@@ -247,7 +250,7 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
     const verb = captured
       ? `captured a ${NAMES[captured.type]}`
       : promoted
-        ? "promoted a Queen Pawn"
+        ? "promoted a Queen"
         : `moved a ${NAMES[moving.type]}`;
     return finish(next, color, `${label(color)} ${verb}`);
   }
