@@ -316,10 +316,12 @@ h1 strong {
   color: #241a38; -webkit-text-stroke: 1.1px #0d0718;
   text-shadow: 0 2px 0 rgba(255,255,255,.2);
 }
+/* Sized against the tray slot, not guessed: the board's glyph fills ~59% of its
+   square, and the tray reads as an afterthought at anything much under that. */
 .piece-small {
-  font-size: clamp(1.15rem,5.6vw,2rem);
+  font-size: clamp(1.6rem,8.2vw,2.9rem);
   filter: drop-shadow(0 2px 0 rgba(32,12,54,.14));
-  -webkit-text-stroke-width: .6px;
+  -webkit-text-stroke-width: .9px;
 }
 .capture-score {
   position: absolute; z-index: 3; display: flex; align-items: center; gap: 3px;
@@ -393,7 +395,6 @@ h1 strong {
   .game-header .icon-button { width: 43px; height: 43px; }
   .turn-pill { padding-inline: 12px; font-size: .72rem; }
   .board { width: min(78vw,330px); padding: 6px; }
-  .piece-small { font-size: clamp(1rem,5.2vw,1.7rem); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
