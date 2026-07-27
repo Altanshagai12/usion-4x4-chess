@@ -117,6 +117,7 @@ export function useUsionGame() {
   const [state, setState] = useState<ChessState>(() => createInitialChessState());
   const [active, setActive] = useState(false);
   const [embedded, setEmbedded] = useState(false);
+  const [started, setStarted] = useState(false);
   const [connection, setConnection] = useState<Connection>("standalone");
   const [playerIds, setPlayerIds] = useState<string[]>([]);
   const [userId, setUserId] = useState("");
@@ -127,30 +128,56 @@ export function useUsionGame() {
   const playerIdsRef = useRef<string[]>([]);
   const inviteRef = useRef<(() => Promise<boolean>) | null>(null);
 
-  const updateRoster = useCallback((ids: string[] | undefined) => {
-    if (!ids) return;
-    const next = [...ids];
-    playerIdsRef.current = next;
-    setPlayerIds(next);
-    setConnection(next.length >= 2 ? "ready" : "waiting");
+  // Both seats filled means the match is live. `started` latches on so a later
+  // blip shows a reconnect notice rather than throwing players back to the
+  // lobby mid-game.
+  const applySeatState = useCallback((ids: string[]) => {
+    const ready = ids.length >= 2;
+    setConnection(ready ? "ready" : "waiting");
+    if (ready) setStarted(true);
   }, []);
 
+  const updateRoster = useCallback(
+    (ids: string[] | undefined) => {
+      if (!ids) return;
+      const next = [...ids];
+      playerIdsRef.current = next;
+      setPlayerIds(next);
+      applySeatState(next);
+    },
+    [applySeatState],
+  );
+
   useEffect(() => {
-    if (window.parent === window) return;
+    // The Usions mobile app runs mini-apps in a React Native WebView, where
+    // `window.parent === window` — gating on iframe-ness alone skips SDK setup
+    // on every phone and silently drops the game into the offline fallback.
+    // The host bridge is what actually proves we are embedded.
+    const hosted =
+      Boolean((window as { ReactNativeWebView?: unknown }).ReactNativeWebView) ||
+      window.parent !== window;
+    if (!hosted) return;
     let cancelled = false;
     const cleanups: Array<() => void> = [];
     let attempts = 0;
 
     const boot = async () => {
+      // Mark this as a hosted session up front. If the SDK is slow or never
+      // loads, the UI must still refuse to offer offline hot-seat play here.
+      setEmbedded(true);
+      setConnection("connecting");
       while (!window.Usion && attempts < 40 && !cancelled) {
         attempts += 1;
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
       const usion = window.Usion;
-      if (!usion || cancelled) return;
-
-      setEmbedded(true);
-      setConnection("connecting");
+      if (!usion || cancelled) {
+        if (!cancelled) {
+          setConnection("failed");
+          setError("The Usions SDK did not load.");
+        }
+        return;
+      }
       try {
         const config = await usion.init({ timeout: 8_000 });
         if (cancelled) return;
@@ -183,7 +210,7 @@ export function useUsionGame() {
           try {
             await usion.game.connect();
             await usion.game.join(roomId);
-            setConnection(playerIdsRef.current.length >= 2 ? "ready" : "waiting");
+            applySeatState(playerIdsRef.current);
           } catch (reason) {
             setError(
               reason instanceof Error ? reason.message : "Could not join the match",
@@ -236,14 +263,12 @@ export function useUsionGame() {
           if (next === "disconnected" || next === "rejoining") {
             setConnection("recovering");
           } else {
-            const ids = playerIdsRef.current;
-            setConnection(ids.length >= 2 ? "ready" : "waiting");
+            applySeatState(playerIdsRef.current);
           }
         }));
         addCleanup(cleanups, usion.game.onReconnected((event) => {
           if (event.state) setState(event.state);
-          const ids = playerIdsRef.current;
-          setConnection(ids.length >= 2 ? "ready" : "waiting");
+          applySeatState(playerIdsRef.current);
         }));
         addCleanup(cleanups, usion.game.onError((event) => {
           setError(event.message ?? event.code ?? "Usions connection error");
@@ -281,7 +306,7 @@ export function useUsionGame() {
       sharedRef.current?.destroy();
       sharedRef.current = null;
     };
-  }, [updateRoster]);
+  }, [applySeatState, updateRoster]);
 
   const seatIndex = playerIds.indexOf(userId);
   const userColor: Color | null =
@@ -335,6 +360,7 @@ export function useUsionGame() {
   return {
     active,
     embedded,
+    started,
     state,
     connection,
     playerIds,

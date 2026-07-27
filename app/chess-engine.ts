@@ -1,12 +1,10 @@
 export type Color = "white" | "black";
-// The board game has exactly two piece types. A pawn that reaches the far rank
-// becomes a Queen Pawn; there is no king, so nothing is ever in check.
-export type PieceType = "pawn" | "queen";
+export type PieceType = "pawn" | "rook" | "knight" | "bishop" | "king" | "queen";
 export type Piece = { id: string; color: Color; type: PieceType };
 export type Square = Piece | null;
 
 export type ChessState = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   board: Square[];
   reserves: Record<Color, Piece[]>;
   turn: Color;
@@ -23,16 +21,33 @@ export type ChessAction = {
   currentTurn?: string;
 };
 
-// One glyph per type, shared by both colours: the two armies must read as the
-// same shapes and differ only in colour, so the fill comes from CSS.
-export const GLYPHS: Record<PieceType, string> = { pawn: "♟", queen: "♛" };
+// One glyph per type, shared by both armies: the two sides must read as the
+// same silhouettes and differ only in colour, so the fill comes from CSS. The
+// solid code points are used for both because outline glyphs cannot be tinted.
+export const GLYPHS: Record<PieceType, string> = {
+  pawn: "♟",
+  rook: "♜",
+  knight: "♞",
+  bishop: "♝",
+  king: "♚",
+  queen: "♛",
+};
 
 export const NAMES: Record<PieceType, string> = {
   pawn: "Pawn",
+  rook: "Rook",
+  knight: "Knight",
+  bishop: "Bishop",
+  king: "King",
   queen: "Queen Pawn",
 };
 
-export const RESERVE_SIZE = 8;
+// Seven back-rank pieces over seven pawns, matching the tray the real game
+// deals each player.
+export const RESERVE_ORDER: PieceType[] = [
+  "rook", "knight", "bishop", "king", "bishop", "knight", "rook",
+  "pawn", "pawn", "pawn", "pawn", "pawn", "pawn", "pawn",
+];
 
 export const otherColor = (color: Color): Color =>
   color === "white" ? "black" : "white";
@@ -45,16 +60,16 @@ export const forward = (color: Color) => (color === "white" ? -1 : 1);
 export const promotionRow = (color: Color) => (color === "white" ? 0 : 3);
 
 function createReserve(color: Color): Piece[] {
-  return Array.from({ length: RESERVE_SIZE }, (_, index) => ({
-    id: `${color}-pawn-${index}`,
+  return RESERVE_ORDER.map((type, index) => ({
+    id: `${color}-${type}-${index}`,
     color,
-    type: "pawn" as const,
+    type,
   }));
 }
 
 export function createInitialChessState(): ChessState {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     board: Array(16).fill(null),
     reserves: { white: createReserve("white"), black: createReserve("black") },
     turn: "white",
@@ -71,23 +86,12 @@ export function getMoves(board: Square[], from: number): number[] {
   const r = row(from);
   const c = col(from);
   const moves: number[] = [];
-
-  if (piece.type === "pawn") {
-    const nr = r + forward(piece.color);
-    if (inBounds(nr, c) && !board[nr * 4 + c]) moves.push(nr * 4 + c);
-    for (const dc of [-1, 1]) {
-      const nc = c + dc;
-      if (!inBounds(nr, nc)) continue;
-      const target = board[nr * 4 + nc];
-      if (target && target.color !== piece.color) moves.push(nr * 4 + nc);
-    }
-    return moves;
-  }
-
-  for (const [dr, dc] of [
-    [-1, 0], [1, 0], [0, -1], [0, 1],
-    [-1, -1], [-1, 1], [1, -1], [1, 1],
-  ]) {
+  const addStep = (nr: number, nc: number) => {
+    if (!inBounds(nr, nc)) return;
+    const target = board[nr * 4 + nc];
+    if (!target || target.color !== piece.color) moves.push(nr * 4 + nc);
+  };
+  const addRay = (dr: number, dc: number) => {
     let nr = r + dr;
     let nc = c + dc;
     while (inBounds(nr, nc)) {
@@ -101,29 +105,68 @@ export function getMoves(board: Square[], from: number): number[] {
       nr += dr;
       nc += dc;
     }
+  };
+
+  if (piece.type === "pawn") {
+    const nr = r + forward(piece.color);
+    if (inBounds(nr, c) && !board[nr * 4 + c]) moves.push(nr * 4 + c);
+    for (const dc of [-1, 1]) {
+      const nc = c + dc;
+      if (!inBounds(nr, nc)) continue;
+      const target = board[nr * 4 + nc];
+      if (target && target.color !== piece.color) moves.push(nr * 4 + nc);
+    }
+  }
+  if (piece.type === "knight") {
+    for (const [dr, dc] of [
+      [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+      [1, -2], [1, 2], [2, -1], [2, 1],
+    ]) addStep(r + dr, c + dc);
+  }
+  if (piece.type === "king") {
+    for (let dr = -1; dr <= 1; dr += 1) {
+      for (let dc = -1; dc <= 1; dc += 1) if (dr || dc) addStep(r + dr, c + dc);
+    }
+  }
+  if (piece.type === "rook" || piece.type === "queen") {
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) addRay(dr, dc);
+  }
+  if (piece.type === "bishop" || piece.type === "queen") {
+    for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) addRay(dr, dc);
   }
   return moves;
 }
 
-// A pawn may never be dropped straight onto the rank that would promote it —
-// promotion has to be walked into.
-export function canDeploy(board: Square[], color: Color, index: number): boolean {
+// Any piece may be dropped on a free square, except that a pawn may never be
+// dropped straight onto the rank that would promote it — promotion has to be
+// walked into.
+export function canDeploy(
+  board: Square[],
+  color: Color,
+  index: number,
+  type: PieceType,
+): boolean {
   if (!Number.isInteger(index) || index < 0 || index > 15) return false;
   if (board[index]) return false;
-  return row(index) !== promotionRow(color);
+  if (type === "pawn" && row(index) === promotionRow(color)) return false;
+  return true;
 }
 
-export function getDeployTargets(board: Square[], color: Color): number[] {
-  return board.flatMap((_, index) => (canDeploy(board, color, index) ? [index] : []));
+export function getDeployTargets(
+  board: Square[],
+  color: Color,
+  type: PieceType,
+): number[] {
+  return board.flatMap((_, index) =>
+    canDeploy(board, color, index, type) ? [index] : [],
+  );
 }
 
 export function hasLegalAction(state: ChessState, color: Color): boolean {
-  if (
-    state.reserves[color].length > 0 &&
-    getDeployTargets(state.board, color).length > 0
-  ) {
-    return true;
-  }
+  const canDrop = state.reserves[color].some(
+    (piece) => getDeployTargets(state.board, color, piece.type).length > 0,
+  );
+  if (canDrop) return true;
   return state.board.some(
     (piece, index) =>
       piece?.color === color && getMoves(state.board, index).length > 0,
@@ -156,7 +199,7 @@ function finish(state: ChessState, color: Color, action: string): ChessState {
 }
 
 export function reduceChess(state: ChessState, action: ChessAction): ChessState {
-  if (!state || state.schemaVersion !== 2) state = createInitialChessState();
+  if (!state || state.schemaVersion !== 3) state = createInitialChessState();
   if (action.type === "reset" && state.winner) return createInitialChessState();
   const color = action.data?.color;
   if ((color !== "white" && color !== "black") || color !== state.turn || state.winner) {
@@ -166,9 +209,9 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
   if (action.type === "deploy") {
     const index = Number(action.data?.index);
     const pieceId = String(action.data?.pieceId ?? "");
-    if (!canDeploy(state.board, color, index)) return state;
     const piece = state.reserves[color].find((item) => item.id === pieceId);
     if (!piece) return state;
+    if (!canDeploy(state.board, color, index, piece.type)) return state;
     const board = [...state.board];
     board[index] = piece;
     const next = {

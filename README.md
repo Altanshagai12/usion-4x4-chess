@@ -11,24 +11,27 @@ phones using the public SDK's ordered game transport.
 
 ## Rules
 
-Both armies are pawns — the variant has no king, so there is no check and no
-checkmate.
+Each side is dealt a fourteen-piece tray: seven back-rank pieces (rook, knight,
+bishop, king, bishop, knight, rook) over seven pawns.
 
-- On each turn, either deploy one pawn from your tray onto an empty square or
-  move a pawn already on the board. Each side starts with eight in reserve.
-- Pawns step one square forward and capture diagonally, as in standard chess.
+- On each turn, either deploy one piece from your tray onto an empty square or
+  move a piece already on the board.
+- Pieces use standard chess movement. There is no check and no checkmate, so a
+  king is captured like any other piece.
 - A pawn may **not** be deployed straight onto its promotion rank; promotion has
-  to be walked into.
-- Reaching the far rank promotes a pawn to a Queen Pawn, which moves in all
-  eight directions.
-- Wipe out every rival pawn, on the board and in the tray, to win. A side that
+  to be walked into. Every other piece can drop on any free square.
+- Reaching the far rank promotes a pawn to a Queen Pawn.
+- Wipe out every rival piece, on the board and in the tray, to win. A side that
   still holds pieces but has no deploy square and no legal move also loses,
   which keeps a jammed board from deadlocking.
 - Usions multiplayer applies actions only after the server echo and restores
   the latest checkpoint after reconnecting.
 - A second player always arrives through the platform: `Usion.game.invite()` or
   the host Share button. The game implements no room codes, invites, or
-  matchmaking of its own, and never offers self-play inside Usions.
+  matchmaking of its own.
+- Inside Usions the lobby holds the screen until both seats are connected, and
+  the board is live only on your own turn — the two players always play from
+  their own devices. Offline hot-seat exists only outside the Usions host.
 
 ## Usions integration
 
@@ -39,6 +42,9 @@ checkmate.
 - Player seats come from `config.playerIds`; seat one is white and seat two black.
 - `Usion.game.invite()` opens the platform's own friend picker, and
   `onRoomAssigned` joins the room a solo launch is promoted into.
+- Embedding is detected via `window.ReactNativeWebView` **or** an iframe parent.
+  The Usions phone app is a React Native WebView where `window.parent ===
+  window`, so an iframe-only check would skip SDK setup on every phone.
 
 ## Development
 

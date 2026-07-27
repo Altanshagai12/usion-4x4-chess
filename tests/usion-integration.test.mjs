@@ -57,3 +57,39 @@ test("a second player arrives through the platform invite, never self-play", asy
   assert.match(game, /usion\.embedded/);
   assert.match(game, /INVITE A FRIEND/);
 });
+
+test("the SDK boots inside the mobile WebView, not just an iframe", async () => {
+  const hook = await readFile(new URL("app/useUsionGame.ts", root), "utf8");
+
+  // The Usions phone app is a React Native WebView where window.parent ===
+  // window. Gating setup on iframe-ness alone drops every phone session into
+  // the offline fallback, which is what made the game hot-seat playable.
+  assert.match(hook, /ReactNativeWebView/);
+  assert.match(hook, /window\.parent !== window/);
+  assert.doesNotMatch(hook, /if \(window\.parent === window\) return;/);
+});
+
+test("a hosted match is unplayable until both seats are connected", async () => {
+  const [game, hook] = await Promise.all([
+    readFile(new URL("app/Game.tsx", root), "utf8"),
+    readFile(new URL("app/useUsionGame.ts", root), "utf8"),
+  ]);
+
+  // The board is live only on your own turn once hosted — never a local
+  // alternating-turn fallback inside Usions.
+  assert.match(
+    game,
+    /const canInteract = !winner && \(usion\.embedded \? usion\.canAct : true\)/,
+  );
+  // The lobby holds the screen until the match has actually started.
+  assert.match(game, /if \(usion\.embedded && !usion\.started && screen !== "rules"\)/);
+  assert.match(game, /players in the room/);
+
+  // `started` latches on both seats being present, so a mid-match blip shows
+  // the reconnect notice instead of bouncing players back to the lobby.
+  assert.match(hook, /const ready = ids\.length >= 2;/);
+  assert.match(hook, /if \(ready\) setStarted\(true\);/);
+  // Being hosted is asserted before the SDK resolves, so a slow or failed SDK
+  // can never fall back to offline play inside Usions.
+  assert.ok(hook.indexOf("setEmbedded(true)") < hook.indexOf("while (!window.Usion"));
+});

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  RESERVE_SIZE,
+  RESERVE_ORDER,
   canDeploy,
   createInitialChessState,
   getDeployTargets,
@@ -18,19 +18,24 @@ const empty = (overrides = {}) => ({
   ...overrides,
 });
 
-test("both armies are pawns only — the variant has no king", () => {
+test("each side is dealt the full fourteen-piece tray", () => {
   const state = createInitialChessState();
   assert.equal(state.board.length, 16);
-  assert.equal(state.reserves.white.length, RESERVE_SIZE);
-  assert.equal(state.reserves.black.length, RESERVE_SIZE);
-  assert.ok(state.reserves.white.every((piece) => piece.type === "pawn"));
-  assert.ok(state.reserves.black.every((piece) => piece.type === "pawn"));
+  assert.equal(state.reserves.white.length, 14);
+  assert.equal(state.reserves.black.length, 14);
+  // Seven back-rank pieces over seven pawns, as the real game's tray shows.
+  assert.deepEqual(state.reserves.white.map((piece) => piece.type), RESERVE_ORDER);
+  assert.deepEqual(
+    RESERVE_ORDER.slice(0, 7),
+    ["rook", "knight", "bishop", "king", "bishop", "knight", "rook"],
+  );
+  assert.equal(RESERVE_ORDER.filter((type) => type === "pawn").length, 7);
   assert.equal(state.turn, "white");
 });
 
 test("deployments are ordered and reject an out-of-turn action", () => {
   const initial = createInitialChessState();
-  const whitePawn = initial.reserves.white[0];
+  const whitePawn = initial.reserves.white.find((piece) => piece.type === "pawn");
   const afterWhite = apply(initial, "deploy", {
     color: "white",
     pieceId: whitePawn.id,
@@ -49,36 +54,55 @@ test("deployments are ordered and reject an out-of-turn action", () => {
 
 test("a pawn can never be dropped straight onto its promotion rank", () => {
   const initial = createInitialChessState();
-  const whitePawn = initial.reserves.white[0];
+  const whitePawn = initial.reserves.white.find((piece) => piece.type === "pawn");
 
-  // White promotes on row 0, so squares 0–3 are off limits for a white drop.
+  // White promotes on row 0, so squares 0–3 are off limits for a white pawn.
   for (const index of [0, 1, 2, 3]) {
-    assert.equal(canDeploy(initial.board, "white", index), false);
+    assert.equal(canDeploy(initial.board, "white", index, "pawn"), false);
     assert.equal(
       apply(initial, "deploy", { color: "white", pieceId: whitePawn.id, index }),
       initial,
-      `white must not deploy onto ${index}`,
+      `white must not deploy a pawn onto ${index}`,
     );
   }
-  assert.equal(canDeploy(initial.board, "white", 4), true);
+  assert.equal(canDeploy(initial.board, "white", 4, "pawn"), true);
 
-  // Black promotes on row 3, so squares 12–15 are off limits for black.
+  // Black promotes on row 3, so squares 12–15 are off limits for black pawns.
   for (const index of [12, 13, 14, 15]) {
-    assert.equal(canDeploy(initial.board, "black", index), false);
+    assert.equal(canDeploy(initial.board, "black", index, "pawn"), false);
   }
-  assert.equal(canDeploy(initial.board, "black", 11), true);
+  assert.equal(canDeploy(initial.board, "black", 11, "pawn"), true);
 
-  assert.deepEqual(getDeployTargets(initial.board, "white"), [
+  assert.deepEqual(getDeployTargets(initial.board, "white", "pawn"), [
     4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
   ]);
-  assert.equal(getDeployTargets(initial.board, "black").length, 12);
+  assert.equal(getDeployTargets(initial.board, "black", "pawn").length, 12);
+});
+
+test("only pawns are restricted — other pieces drop on any free square", () => {
+  const initial = createInitialChessState();
+  const whiteRook = initial.reserves.white.find((piece) => piece.type === "rook");
+
+  for (const type of ["rook", "knight", "bishop", "king", "queen"]) {
+    assert.equal(canDeploy(initial.board, "white", 0, type), true, type);
+    assert.equal(getDeployTargets(initial.board, "white", type).length, 16, type);
+  }
+
+  const dropped = apply(initial, "deploy", {
+    color: "white",
+    pieceId: whiteRook.id,
+    index: 0,
+  });
+  assert.equal(dropped.board[0]?.type, "rook");
+  assert.equal(dropped.turn, "black");
 });
 
 test("an occupied square is never a deploy target", () => {
   const state = empty();
   state.board[9] = { id: "black-pawn-0", color: "black", type: "pawn" };
-  assert.equal(canDeploy(state.board, "white", 9), false);
-  assert.equal(getDeployTargets(state.board, "white").includes(9), false);
+  assert.equal(canDeploy(state.board, "white", 9, "pawn"), false);
+  assert.equal(canDeploy(state.board, "white", 9, "rook"), false);
+  assert.equal(getDeployTargets(state.board, "white", "rook").includes(9), false);
 });
 
 test("pawns step forward and capture diagonally", () => {
@@ -137,8 +161,8 @@ test("a rival left with no legal action loses instead of deadlocking", () => {
 });
 
 test("stale schema versions are rebuilt instead of trusted", () => {
-  const legacy = { schemaVersion: 1, board: [], reserves: {}, turn: "white" };
+  const legacy = { schemaVersion: 2, board: [], reserves: {}, turn: "white" };
   const rebuilt = reduceChess(legacy, { type: "noop", data: {} });
-  assert.equal(rebuilt.schemaVersion, 2);
-  assert.equal(rebuilt.reserves.white.length, RESERVE_SIZE);
+  assert.equal(rebuilt.schemaVersion, 3);
+  assert.equal(rebuilt.reserves.white.length, RESERVE_ORDER.length);
 });

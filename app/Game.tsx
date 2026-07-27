@@ -7,7 +7,8 @@ import {
   GLYPHS,
   NAMES,
   Piece,
-  RESERVE_SIZE,
+  PieceType,
+  RESERVE_ORDER,
   col,
   createInitialChessState,
   getDeployTargets,
@@ -20,23 +21,23 @@ import { useUsionGame } from "./useUsionGame";
 type Screen = "home" | "rules" | "game";
 type Selection =
   | { source: "board"; index: number }
-  | { source: "reserve"; color: Color; id: string }
+  | { source: "reserve"; color: Color; id: string; type: PieceType }
   | null;
 
 const RULES = [
   {
-    title: "DEPLOY A PAWN",
-    copy: "On your turn, either drop one pawn from your tray onto an empty square, or move a pawn already in play. You cannot drop a pawn straight onto the promotion rank.",
+    title: "PUT PIECES INSIDE THE MAIN BOARD",
+    copy: "On your turn, either drop one piece from your tray onto an empty square, or move a piece already in play. A pawn can never be dropped straight onto its promotion rank.",
     art: "deploy",
   },
   {
     title: "MOVE & CAPTURE LIKE CHESS",
-    copy: "Pawns step one square forward and capture diagonally. There is no king, so there is no check and no checkmate.",
+    copy: "Every piece moves by standard chess rules. There is no check and no checkmate, so even a king can be captured like anything else.",
     art: "capture",
   },
   {
     title: "PROMOTE & BE THE LAST STANDING",
-    copy: "Walk a pawn to the far rank and it becomes a Queen Pawn that moves in every direction. Wipe out the whole rival army to win.",
+    copy: "Walk a pawn to the far rank and it becomes a Queen Pawn. Wipe out the whole rival army, tray included, to win.",
     art: "win",
   },
 ] as const;
@@ -72,7 +73,7 @@ function ReserveTray({
         <strong>{pieces.length}</strong>
       </div>
       <div className="reserve-grid">
-        {Array.from({ length: RESERVE_SIZE }, (_, index) => {
+        {Array.from({ length: RESERVE_ORDER.length }, (_, index) => {
           const piece = pieces[index];
           if (!piece) return <span className="reserve-slot empty-slot" key={index} />;
           const selected = selection?.source === "reserve" && selection.id === piece.id;
@@ -154,10 +155,14 @@ export default function Game() {
     return () => cancelAnimationFrame(frame);
   }, [state.moveCount]);
 
-  const canInteract = !winner && (usion.active ? usion.canAct : true);
+  // Inside Usions every move must go through the room, so the board is live
+  // only on your own turn. Offline hot-seat exists solely outside the host.
+  const canInteract = !winner && (usion.embedded ? usion.canAct : true);
   const legalTargets = useMemo(() => {
     if (!selection || !canInteract) return [];
-    if (selection.source === "reserve") return getDeployTargets(board, selection.color);
+    if (selection.source === "reserve") {
+      return getDeployTargets(board, selection.color, selection.type);
+    }
     return getMoves(board, selection.index);
   }, [board, canInteract, selection]);
 
@@ -186,7 +191,7 @@ export default function Game() {
     setSelection((current) =>
       current?.source === "reserve" && current.id === piece.id
         ? null
-        : { source: "reserve", color: piece.color, id: piece.id },
+        : { source: "reserve", color: piece.color, id: piece.id, type: piece.type },
     );
   };
 
@@ -216,18 +221,71 @@ export default function Game() {
     void dispatch("move", { from, to: index });
   };
 
+  // Inside Usions the match cannot begin until the second seat is filled, so
+  // the lobby holds the screen until then rather than exposing a playable
+  // board. Other platform games behave the same way.
+  if (usion.embedded && !usion.started && screen !== "rules") {
+    const seats = Math.max(usion.playerIds.length, 1);
+    const inRoom = usion.active;
+    return (
+      <main className="game-shell lobby-screen">
+        <section className="home-card">
+          <div className="mini-board-logo" aria-hidden="true">
+            {Array.from({ length: 16 }, (_, index) => (
+              <span key={index}>{index === 2 ? GLYPHS.king : index === 13 ? GLYPHS.pawn : ""}</span>
+            ))}
+          </div>
+          <p className="eyebrow">QUICK ONLINE DUEL</p>
+          <h1><span>4×4 CHESS</span><strong>LAST MAN STAND</strong></h1>
+
+          {usion.connection === "failed" ? (
+            <>
+              <p className="home-copy">{usion.error || "The match connection needs attention."}</p>
+              <div className="home-actions">
+                <button className="primary-button" onClick={usion.recover}>RETRY</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="lobby-seats" aria-live="polite">
+                {[0, 1].map((seat) => {
+                  const filled = seat < usion.playerIds.length;
+                  return (
+                    <div className={`lobby-seat${filled ? " filled" : ""}`} key={seat}>
+                      <span className="lobby-avatar" aria-hidden="true">
+                        {filled ? (seat === 0 ? GLYPHS.king : GLYPHS.queen) : "?"}
+                      </span>
+                      <strong>{filled ? (seat === 0 ? "PLAYER 1" : "PLAYER 2") : "WAITING…"}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="home-copy">
+                {inRoom
+                  ? `${seats} / 2 players in the room. The duel starts the moment your friend joins.`
+                  : "Invite a friend, then wait here — you each play from your own phone."}
+              </p>
+              <div className="home-actions">
+                <button className="primary-button" onClick={() => void usion.invite()} disabled={usion.inviting}>
+                  <span aria-hidden="true">♟</span>{" "}
+                  {usion.inviting ? "OPENING…" : inRoom ? "INVITE ANOTHER FRIEND" : "INVITE A FRIEND"}
+                </button>
+                <button className="secondary-button" onClick={() => setScreen("rules")}>HOW TO PLAY?</button>
+              </div>
+            </>
+          )}
+          {usion.error && usion.connection !== "failed" && <p className="home-error">{usion.error}</p>}
+        </section>
+      </main>
+    );
+  }
+
   if (screen === "home") {
-    // Inside Usions a duel always needs a real second phone, so the only way in
-    // is the platform's own invite picker. Local play exists purely as the
-    // out-of-host browser fallback.
-    const primary = usion.active
+    // The lobby above owns every hosted session that has not started, so this
+    // screen is only reached mid-match or outside the Usions host entirely.
+    const primary = usion.embedded
       ? { label: "RETURN TO MATCH", run: () => setScreen("game") }
-      : usion.embedded
-        ? {
-            label: usion.inviting ? "OPENING…" : "INVITE A FRIEND",
-            run: () => void usion.invite(),
-          }
-        : { label: "PRACTICE ON THIS DEVICE", run: resetGame };
+      : { label: "PRACTICE ON THIS DEVICE", run: resetGame };
 
     return (
       <main className="game-shell home-screen">
@@ -245,7 +303,7 @@ export default function Game() {
               : "Open this game inside Usions to duel a friend from two phones."}
           </p>
           <div className="home-actions">
-            <button className="primary-button" onClick={primary.run} disabled={usion.inviting}>
+            <button className="primary-button" onClick={primary.run}>
               <span aria-hidden="true">♟</span> {primary.label}
             </button>
             <button className="secondary-button" onClick={() => setScreen("rules")}>HOW TO PLAY?</button>
@@ -268,13 +326,15 @@ export default function Game() {
           <h2>{rule.title}</h2>
           <div className={`rules-art rules-art-${rule.art}`} aria-hidden="true">
             <div className="tiny-tray">
-              {Array.from({ length: 7 }, (_, index) => <span key={index}>{GLYPHS.pawn}</span>)}
+              {RESERVE_ORDER.slice(0, 7).map((type, index) => (
+                <span key={`${type}-${index}`}>{GLYPHS[type]}</span>
+              ))}
             </div>
             <div className="rules-board">
               {Array.from({ length: 16 }, (_, index) => (
                 <span key={index}>
                   {rule.art === "capture" && index === 5 ? GLYPHS.pawn : ""}
-                  {rule.art === "capture" && index === 10 ? GLYPHS.pawn : ""}
+                  {rule.art === "capture" && index === 10 ? GLYPHS.rook : ""}
                   {rule.art === "win" && index === 2 ? GLYPHS.queen : ""}
                 </span>
               ))}
