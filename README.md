@@ -4,6 +4,11 @@ A standalone browser game inspired by the compact last-man-standing chess
 variant. In Usions, two players join the same platform-owned room from separate
 phones using the public SDK's ordered game transport.
 
+> Not a single line is added to the Usions (`usionthemobile`) repository. This
+> game is an independently hosted iframe mini app, and it reaches the platform
+> only by registering in the **service registry** — see
+> [Register on Usions](#register-on-usions).
+
 ## Rules
 
 - On each turn, deploy one reserve piece or move one piece already on the board.
@@ -31,3 +36,53 @@ npm install
 npm run dev
 npm test
 ```
+
+## Register on Usions
+
+Usions hosts no game code of its own. A game lives in its own repository, is
+deployed from there, and appears on the platform once a service registry entry
+points at the deployed origin. `scripts/publish-service.js` writes that entry
+and nothing else.
+
+1. Deploy this repository and note the public https origin.
+2. Mint a scoped creator token in the app: **Service Creator → Agent API Access
+   → Create API token**. The raw `usion_sk_…` token is shown once.
+3. Publish. Never commit the token or paste it into source files.
+
+```powershell
+$env:USION_SERVICE_URL = 'https://<deployed-origin>'
+$env:USION_API_TOKEN = '<your usion_sk_ token>'
+npm run publish:service
+Remove-Item Env:USION_API_TOKEN
+```
+
+The script registers the game the first time and updates the same entry on
+every later run, so it is safe to re-run after a redeploy. Set
+`USION_SERVICE_ID` to target an existing entry directly, and
+`USION_SERVICE_IMAGE` to a public https PNG for the catalog image.
+`npm run publish:service -- --dry-run` prints the exact payload without a token
+and without touching the registry.
+
+### The registry entry
+
+```json
+{
+  "name": "4×4 Chess: Last Man Stand",
+  "service_type": "game",
+  "cost": 0,
+  "tags": ["game", "multiplayer", "iframe", "strategy", "turn-based", "chess"],
+  "is_published": true,
+  "multiplayer": { "profile": "state", "maxPlayers": 2 }
+}
+```
+
+`multiplayer.profile: "state"` is the field that matters. It keeps the match on
+the platform relay, which is the transport `Usion.game.syncedState` requires,
+and fixes the room at two seats. Registering the same tags without it makes the
+registry classify this as a direct-mode game and derive `realtime.ws_url` from
+the iframe host — a game server this repository never deploys, so every room
+would fail to connect. The publisher re-reads the public catalog after writing
+and fails if the stored entry is not a two-seat platform-relay match.
+
+The service carries no leaderboard: last-man-standing chess produces a winner,
+not a score, so the platform records loop does not apply.

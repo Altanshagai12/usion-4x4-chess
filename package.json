@@ -9,7 +9,8 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/chess-engine.test.mjs tests/usion-integration.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/chess-engine.test.mjs tests/usion-integration.test.mjs tests/publish-service.test.mjs",
+    "publish:service": "node scripts/publish-service.js",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
