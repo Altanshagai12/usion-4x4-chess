@@ -79,6 +79,9 @@ h1 strong {
   font-size: 1rem; font-weight: 700; line-height: 1.5;
 }
 .home-actions { display: grid; gap: 14px; width: min(100%,340px); margin: 0 auto; }
+.home-error {
+  margin: 14px auto 0; max-width: 320px; color: #ffd7db; font-size: .8rem; font-weight: 800;
+}
 .primary-button, .secondary-button, .icon-button, .text-button {
   cursor: pointer; border: 0; font-weight: 1000;
   transition: transform 150ms ease, filter 150ms ease;
@@ -230,12 +233,13 @@ h1 strong {
   border-radius: 999px; background: rgba(44,11,99,.45); color: var(--yellow);
 }
 .reserve-grid {
-  display: grid; grid-template-columns: repeat(7,1fr); padding: 6px; overflow: hidden;
+  display: grid; grid-template-columns: repeat(8,1fr); padding: 6px; overflow: hidden;
   border: 4px solid #4d247b; border-radius: 12px; background: var(--yellow);
   box-shadow: 0 6px 0 #431d79, 0 11px 18px rgba(39,8,83,.22);
 }
 .reserve-slot {
-  position: relative; display: grid; place-items: center; min-width: 0; aspect-ratio: 1.08;
+  position: relative; display: grid; place-items: center; min-width: 0; min-height: 0;
+  aspect-ratio: 1; overflow: hidden;
   cursor: pointer; border: 0; background: #fff1cb;
 }
 .reserve-slot:nth-child(even) { background: #f4b943; }
@@ -248,13 +252,18 @@ h1 strong {
   content: ""; width: 30%; aspect-ratio: 1; border-radius: 50%; background: rgba(91,47,118,.08);
 }
 .board-wrap { position: relative; display: grid; place-items: center; }
+/* Rows must be pinned to equal fractions. With implicit rows the tall piece
+   glyph grows whichever row it lands in, which visibly stretches the board the
+   moment a piece is deployed. */
 .board {
-  display: grid; grid-template-columns: repeat(4,1fr); width: min(76vw,360px); aspect-ratio: 1;
+  display: grid; grid-template-columns: repeat(4,1fr); grid-template-rows: repeat(4,1fr);
+  width: min(76vw,360px); aspect-ratio: 1;
   overflow: hidden; padding: 8px; border: 6px solid #4c237f; border-radius: 18px;
   background: #7ddab4; box-shadow: 0 9px 0 #3d176e, 0 17px 25px rgba(38,7,78,.28);
 }
 .square {
-  position: relative; display: grid; place-items: center; min-width: 0; cursor: pointer;
+  position: relative; display: grid; place-items: center;
+  min-width: 0; min-height: 0; overflow: hidden; cursor: pointer;
   border: 0; color: var(--ink);
 }
 .square-light { background: #cef8dd; }
@@ -266,18 +275,27 @@ h1 strong {
 }
 .square.capture::after { border-color: #ff6f77; box-shadow: 0 0 14px rgba(255,84,98,.52); }
 .move-dot { width: 18%; aspect-ratio: 1; border-radius: 50%; background: rgba(45,29,84,.42); }
+/* Both armies share one glyph per type, so the only difference between them is
+   the fill/outline below — same silhouette, different colour. Keep the size
+   under the square so a piece never drives the grid. */
 .piece-glyph {
   position: relative; z-index: 2; display: block; font-family: Georgia,"Times New Roman",serif;
-  font-size: clamp(2.65rem,15vw,5.4rem); line-height: 1; user-select: none;
-  filter: drop-shadow(0 4px 0 rgba(32,12,54,.18)); transform: translateY(-2%);
+  font-size: clamp(1.7rem,10.5vw,3.3rem); line-height: 1; user-select: none;
+  filter: drop-shadow(0 3px 0 rgba(32,12,54,.16)); transform: translateY(-2%);
 }
 .piece-white {
-  color: #fff9df; -webkit-text-stroke: 1.5px #715b8d; text-shadow: 0 2px 0 #b9a2c5;
+  color: #fffdf2; -webkit-text-stroke: 2px #4c237f;
+  text-shadow: 0 2px 0 rgba(76,35,127,.32);
 }
 .piece-black {
-  color: #283345; -webkit-text-stroke: 1.2px #17202e; text-shadow: 0 2px 0 #5d6780;
+  color: #2b2040; -webkit-text-stroke: 2px #120a24;
+  text-shadow: 0 2px 0 rgba(255,255,255,.22);
 }
-.piece-small { font-size: clamp(1.45rem,7vw,2.5rem); filter: drop-shadow(0 2px 0 rgba(32,12,54,.16)); }
+.piece-small {
+  font-size: clamp(.95rem,4.4vw,1.6rem);
+  filter: drop-shadow(0 2px 0 rgba(32,12,54,.14));
+  -webkit-text-stroke-width: 1.4px;
+}
 .capture-score {
   position: absolute; z-index: 3; display: flex; align-items: center; gap: 3px;
   padding: 5px 9px; border-radius: 999px; background: #4d247d; color: var(--yellow);
@@ -350,7 +368,7 @@ h1 strong {
   .game-header .icon-button { width: 43px; height: 43px; }
   .turn-pill { padding-inline: 12px; font-size: .72rem; }
   .board { width: min(78vw,330px); padding: 6px; }
-  .piece-small { font-size: clamp(1.25rem,7vw,2rem); }
+  .piece-small { font-size: clamp(.85rem,4.2vw,1.3rem); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

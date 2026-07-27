@@ -11,15 +11,24 @@ phones using the public SDK's ordered game transport.
 
 ## Rules
 
-- On each turn, deploy one reserve piece or move one piece already on the board.
-- Pieces use standard chess movement, but there is no check or checkmate.
-- Kings can be captured like any other piece.
-- Pawns promote to queens on the opposite edge.
-- Eliminate every opposing board and reserve piece to win.
+Both armies are pawns — the variant has no king, so there is no check and no
+checkmate.
+
+- On each turn, either deploy one pawn from your tray onto an empty square or
+  move a pawn already on the board. Each side starts with eight in reserve.
+- Pawns step one square forward and capture diagonally, as in standard chess.
+- A pawn may **not** be deployed straight onto its promotion rank; promotion has
+  to be walked into.
+- Reaching the far rank promotes a pawn to a Queen Pawn, which moves in all
+  eight directions.
+- Wipe out every rival pawn, on the board and in the tray, to win. A side that
+  still holds pieces but has no deploy square and no legal move also loses,
+  which keeps a jammed board from deadlocking.
 - Usions multiplayer applies actions only after the server echo and restores
   the latest checkpoint after reconnecting.
-- A solo Explore launch stays local until the Usions host Share button promotes
-  it into a room. The game does not implement room codes, invites, or matchmaking.
+- A second player always arrives through the platform: `Usion.game.invite()` or
+  the host Share button. The game implements no room codes, invites, or
+  matchmaking of its own, and never offers self-play inside Usions.
 
 ## Usions integration
 
@@ -28,6 +37,8 @@ phones using the public SDK's ordered game transport.
 - `Usion.game.connect()` and `Usion.game.join(roomId)` use the assigned room.
 - `Usion.game.syncedState` sequences moves and checkpoints every action.
 - Player seats come from `config.playerIds`; seat one is white and seat two black.
+- `Usion.game.invite()` opens the platform's own friend picker, and
+  `onRoomAssigned` joins the room a solo launch is promoted into.
 
 ## Development
 

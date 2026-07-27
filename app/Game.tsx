@@ -7,9 +7,10 @@ import {
   GLYPHS,
   NAMES,
   Piece,
-  RESERVE_ORDER,
+  RESERVE_SIZE,
   col,
   createInitialChessState,
+  getDeployTargets,
   getMoves,
   reduceChess,
   row,
@@ -24,26 +25,29 @@ type Selection =
 
 const RULES = [
   {
-    title: "PUT PIECES INSIDE THE MAIN BOARD",
-    copy: "On your turn, pick any piece from your tray and place it on an empty square.",
+    title: "DEPLOY A PAWN",
+    copy: "On your turn, either drop one pawn from your tray onto an empty square, or move a pawn already in play. You cannot drop a pawn straight onto the promotion rank.",
     art: "deploy",
   },
   {
     title: "MOVE & CAPTURE LIKE CHESS",
-    copy: "Instead of deploying, move a piece already in play. There is no check or checkmate.",
+    copy: "Pawns step one square forward and capture diagonally. There is no king, so there is no check and no checkmate.",
     art: "capture",
   },
   {
     title: "PROMOTE & BE THE LAST STANDING",
-    copy: "Reach the far edge with a pawn to make a Queen Pawn. Eliminate the entire rival army to win.",
+    copy: "Walk a pawn to the far rank and it becomes a Queen Pawn that moves in every direction. Wipe out the whole rival army to win.",
     art: "win",
   },
 ] as const;
 
 function PieceGlyph({ piece, small = false }: { piece: Piece; small?: boolean }) {
   return (
-    <span className={`piece-glyph piece-${piece.color}${small ? " piece-small" : ""}`} aria-hidden="true">
-      {GLYPHS[piece.color][piece.type]}
+    <span
+      className={`piece-glyph piece-${piece.color}${small ? " piece-small" : ""}`}
+      aria-hidden="true"
+    >
+      {GLYPHS[piece.type]}
     </span>
   );
 }
@@ -68,7 +72,7 @@ function ReserveTray({
         <strong>{pieces.length}</strong>
       </div>
       <div className="reserve-grid">
-        {Array.from({ length: 14 }, (_, index) => {
+        {Array.from({ length: RESERVE_SIZE }, (_, index) => {
           const piece = pieces[index];
           if (!piece) return <span className="reserve-slot empty-slot" key={index} />;
           const selected = selection?.source === "reserve" && selection.id === piece.id;
@@ -94,15 +98,20 @@ function ConnectionNotice({
   connection,
   playerCount,
   error,
+  inviting,
+  onInvite,
   recover,
 }: {
   connection: string;
   playerCount: number;
   error: string;
+  inviting: boolean;
+  onInvite: () => void;
   recover: () => void;
 }) {
-  if (connection === "ready") return null;
+  if (connection === "ready" || connection === "standalone") return null;
   const copy: Record<string, string> = {
+    lobby: "Invite a friend to start the match.",
     connecting: "Connecting to Usions…",
     waiting: "Waiting for your opponent to join…",
     recovering: "Reconnecting and restoring the match…",
@@ -115,6 +124,11 @@ function ConnectionNotice({
         <strong>{copy[connection] ?? "Preparing the match…"}</strong>
         {connection === "waiting" && <small>{playerCount} / 2 players connected</small>}
       </div>
+      {(connection === "waiting" || connection === "lobby") && (
+        <button onClick={onInvite} disabled={inviting}>
+          {inviting ? "…" : "INVITE"}
+        </button>
+      )}
       {connection === "failed" && <button onClick={recover}>RETRY</button>}
     </div>
   );
@@ -143,9 +157,7 @@ export default function Game() {
   const canInteract = !winner && (usion.active ? usion.canAct : true);
   const legalTargets = useMemo(() => {
     if (!selection || !canInteract) return [];
-    if (selection.source === "reserve") {
-      return board.flatMap((square, index) => (square ? [] : [index]));
-    }
+    if (selection.source === "reserve") return getDeployTargets(board, selection.color);
     return getMoves(board, selection.index);
   }, [board, canInteract, selection]);
 
@@ -205,25 +217,40 @@ export default function Game() {
   };
 
   if (screen === "home") {
+    // Inside Usions a duel always needs a real second phone, so the only way in
+    // is the platform's own invite picker. Local play exists purely as the
+    // out-of-host browser fallback.
+    const primary = usion.active
+      ? { label: "RETURN TO MATCH", run: () => setScreen("game") }
+      : usion.embedded
+        ? {
+            label: usion.inviting ? "OPENING…" : "INVITE A FRIEND",
+            run: () => void usion.invite(),
+          }
+        : { label: "PRACTICE ON THIS DEVICE", run: resetGame };
+
     return (
       <main className="game-shell home-screen">
         <section className="home-card">
           <div className="mini-board-logo" aria-hidden="true">
             {Array.from({ length: 16 }, (_, index) => (
-              <span key={index}>{index === 2 ? "♜" : index === 13 ? "♙" : ""}</span>
+              <span key={index}>{index === 2 ? "♛" : index === 13 ? "♟" : ""}</span>
             ))}
           </div>
           <p className="eyebrow">QUICK ONLINE DUEL</p>
           <h1><span>4×4 CHESS</span><strong>LAST MAN STAND</strong></h1>
           <p className="home-copy">
-            Invite a friend in Usions and battle from two different phones.
+            {usion.embedded
+              ? "Invite a friend in Usions and battle from two different phones."
+              : "Open this game inside Usions to duel a friend from two phones."}
           </p>
           <div className="home-actions">
-            <button className="primary-button" onClick={resetGame}>
-              <span aria-hidden="true">♟</span> {usion.active ? "RETURN TO MATCH" : "LOCAL DEMO"}
+            <button className="primary-button" onClick={primary.run} disabled={usion.inviting}>
+              <span aria-hidden="true">♟</span> {primary.label}
             </button>
             <button className="secondary-button" onClick={() => setScreen("rules")}>HOW TO PLAY?</button>
           </div>
+          {usion.error && <p className="home-error">{usion.error}</p>}
         </section>
         <button className="sound-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "Mute sound" : "Turn sound on"}>
           {soundOn ? "🔊" : "🔇"}
@@ -241,14 +268,14 @@ export default function Game() {
           <h2>{rule.title}</h2>
           <div className={`rules-art rules-art-${rule.art}`} aria-hidden="true">
             <div className="tiny-tray">
-              {RESERVE_ORDER.slice(0, 7).map((type, index) => <span key={`${type}-${index}`}>{GLYPHS.black[type]}</span>)}
+              {Array.from({ length: 7 }, (_, index) => <span key={index}>{GLYPHS.pawn}</span>)}
             </div>
             <div className="rules-board">
               {Array.from({ length: 16 }, (_, index) => (
                 <span key={index}>
-                  {rule.art === "capture" && index === 5 ? "♙" : ""}
-                  {rule.art === "capture" && index === 10 ? "♟" : ""}
-                  {rule.art === "win" && index === 2 ? "♕" : ""}
+                  {rule.art === "capture" && index === 5 ? GLYPHS.pawn : ""}
+                  {rule.art === "capture" && index === 10 ? GLYPHS.pawn : ""}
+                  {rule.art === "win" && index === 2 ? GLYPHS.queen : ""}
                 </span>
               ))}
             </div>
@@ -261,7 +288,7 @@ export default function Game() {
           <div className="rules-actions">
             <button className="icon-button" onClick={() => rulePage === 0 ? setScreen(usion.active ? "game" : "home") : setRulePage((page) => page - 1)} aria-label="Previous">←</button>
             <button className="primary-button rules-next" onClick={() => {
-              if (rulePage === RULES.length - 1) setScreen("game");
+              if (rulePage === RULES.length - 1) setScreen(usion.active || !usion.embedded ? "game" : "home");
               else setRulePage((page) => page + 1);
             }}>{rulePage === RULES.length - 1 ? "BACK TO GAME" : "NEXT"} →</button>
           </div>
@@ -280,6 +307,8 @@ export default function Game() {
         connection={usion.connection}
         playerCount={usion.playerIds.length}
         error={usion.error}
+        inviting={usion.inviting}
+        onInvite={() => void usion.invite()}
         recover={usion.recover}
       />
       <header className="game-header">
@@ -296,7 +325,7 @@ export default function Game() {
       <div className="game-stage">
         <ReserveTray color="black" pieces={reserves.black} active={turn === "black" && canInteract} selection={selection} onSelect={selectReserve} />
         <section className="board-wrap">
-          <div className="capture-score capture-score-black"><span>♙</span> {captures.black}</div>
+          <div className="capture-score capture-score-black"><span>{GLYPHS.pawn}</span> {captures.black}</div>
           <div className="board" role="grid" aria-label="4 by 4 chessboard">
             {board.map((piece, index) => {
               const selected = selection?.source === "board" && selection.index === index;
@@ -316,7 +345,7 @@ export default function Game() {
               );
             })}
           </div>
-          <div className="capture-score capture-score-white"><span>♟</span> {captures.white}</div>
+          <div className="capture-score capture-score-white"><span>{GLYPHS.pawn}</span> {captures.white}</div>
         </section>
         <ReserveTray color="white" pieces={reserves.white} active={turn === "white" && canInteract} selection={selection} onSelect={selectReserve} />
       </div>
@@ -335,7 +364,7 @@ export default function Game() {
             {Array.from({ length: 24 }, (_, index) => <i key={index} style={{ "--i": index } as React.CSSProperties} />)}
           </div>
           <section className="winner-card">
-            <span className={`winner-piece winner-${winner}`}>{winner === "white" ? "♕" : "♛"}</span>
+            <span className={`winner-piece winner-${winner}`}>{GLYPHS.queen}</span>
             <p>LAST MAN STANDING</p>
             <h2>{winner === "white" ? "WHITE" : "BLACK"} WINS!</h2>
             <button className="primary-button" onClick={resetGame}>REMATCH</button>

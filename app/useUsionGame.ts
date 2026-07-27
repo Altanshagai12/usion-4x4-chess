@@ -12,6 +12,7 @@ import {
 
 type Connection =
   | "standalone"
+  | "lobby"
   | "connecting"
   | "waiting"
   | "ready"
@@ -48,10 +49,18 @@ type SharedState = {
   destroy(): void;
 };
 
+type InviteResult = {
+  sent?: boolean;
+  roomId?: string | null;
+  invited?: string[];
+};
+
 type UsionGame = {
   connect(): Promise<unknown>;
   join(roomId: string): Promise<unknown>;
   isMultiplayer(): boolean;
+  // The platform owns the friend/group picker; the game never draws its own.
+  invite(options?: Record<string, unknown>): Promise<InviteResult>;
   syncedState(
     initial: ChessState,
     options: {
@@ -107,13 +116,16 @@ function addCleanup(
 export function useUsionGame() {
   const [state, setState] = useState<ChessState>(() => createInitialChessState());
   const [active, setActive] = useState(false);
+  const [embedded, setEmbedded] = useState(false);
   const [connection, setConnection] = useState<Connection>("standalone");
   const [playerIds, setPlayerIds] = useState<string[]>([]);
   const [userId, setUserId] = useState("");
   const [pending, setPending] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const [error, setError] = useState("");
   const sharedRef = useRef<SharedState | null>(null);
   const playerIdsRef = useRef<string[]>([]);
+  const inviteRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const updateRoster = useCallback((ids: string[] | undefined) => {
     if (!ids) return;
@@ -137,6 +149,7 @@ export function useUsionGame() {
       const usion = window.Usion;
       if (!usion || cancelled) return;
 
+      setEmbedded(true);
       setConnection("connecting");
       try {
         const config = await usion.init({ timeout: 8_000 });
@@ -166,6 +179,38 @@ export function useUsionGame() {
         addCleanup(cleanups, shared.onChange((next) => setState(next)));
         setState(shared.get());
 
+        const enterRoom = async (roomId: string) => {
+          try {
+            await usion.game.connect();
+            await usion.game.join(roomId);
+            setConnection(playerIdsRef.current.length >= 2 ? "ready" : "waiting");
+          } catch (reason) {
+            setError(
+              reason instanceof Error ? reason.message : "Could not join the match",
+            );
+            setConnection("failed");
+          }
+        };
+        inviteRef.current = async () => {
+          setInviting(true);
+          setError("");
+          try {
+            const result = await usion.game.invite();
+            if (result?.roomId) {
+              setActive(true);
+              await enterRoom(result.roomId);
+            }
+            return Boolean(result?.sent);
+          } catch (reason) {
+            setError(
+              reason instanceof Error ? reason.message : "Could not send the invite",
+            );
+            return false;
+          } finally {
+            setInviting(false);
+          }
+        };
+
         addCleanup(cleanups, usion.game.onJoined((event) => {
           setActive(true);
           updateRoster(event.player_ids ?? playerIdsRef.current);
@@ -178,10 +223,14 @@ export function useUsionGame() {
           updateRoster(event.player_ids);
           setError("Your opponent left the match.");
         }));
-        addCleanup(cleanups, usion.game.onRoomAssigned(() => {
+        // A solo launch is promoted into a room by the host Share button or by
+        // game.invite(). Joining here is what makes that promotion real —
+        // without it the game would hold a room id it never entered.
+        addCleanup(cleanups, usion.game.onRoomAssigned((event) => {
           setActive(true);
           setConnection("connecting");
           setError("");
+          if (event.roomId) void enterRoom(event.roomId);
         }));
         addCleanup(cleanups, usion.game.onConnectionState((next) => {
           if (next === "disconnected" || next === "rejoining") {
@@ -206,7 +255,8 @@ export function useUsionGame() {
           config.mode === "multiplayer" ||
           usion.game.isMultiplayer();
         if (!multiplayer) {
-          setConnection("standalone");
+          // Solo launch: idle in the lobby until an invite creates the room.
+          setConnection("lobby");
           return;
         }
 
@@ -214,10 +264,7 @@ export function useUsionGame() {
         if (!roomId) throw new Error("Usions did not assign a match room.");
 
         setActive(true);
-        await usion.game.connect();
-        await usion.game.join(roomId);
-        const ids = playerIdsRef.current;
-        setConnection(ids.length >= 2 ? "ready" : "waiting");
+        await enterRoom(roomId);
       } catch (reason) {
         if (cancelled) return;
         setError(
@@ -273,6 +320,12 @@ export function useUsionGame() {
     [canAct, playerIds, userColor],
   );
 
+  const invite = useCallback(async () => {
+    const run = inviteRef.current;
+    if (!run) return false;
+    return run();
+  }, []);
+
   const recover = useCallback(() => {
     setConnection("recovering");
     setError("");
@@ -281,14 +334,17 @@ export function useUsionGame() {
 
   return {
     active,
+    embedded,
     state,
     connection,
     playerIds,
     userColor,
     canAct,
     pending,
+    inviting,
     error,
     commit,
+    invite,
     recover,
     opponentColor: userColor ? otherColor(userColor) : null,
   };

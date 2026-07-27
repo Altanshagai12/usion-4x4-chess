@@ -33,3 +33,27 @@ test("online actions wait for the shared-state echo", async () => {
   assert.match(game, /if \(usion\.active\) \{\s*await usion\.commit/);
   assert.match(game, /const state = usion\.active \? usion\.state : localState/);
 });
+
+test("a second player arrives through the platform invite, never self-play", async () => {
+  const [hook, game] = await Promise.all([
+    readFile(new URL("app/useUsionGame.ts", root), "utf8"),
+    readFile(new URL("app/Game.tsx", root), "utf8"),
+  ]);
+
+  // The platform owns the picker; the game must not draw room codes or its own
+  // share sheet.
+  assert.match(hook, /usion\.game\.invite\(\)/);
+  assert.doesNotMatch(game, /room code|Room Code|matchmaking/i);
+  assert.doesNotMatch(game, /LOCAL DEMO/);
+
+  // A solo launch idles in the lobby and only enters a room once one is
+  // assigned — and entering must actually join it.
+  assert.match(hook, /setConnection\("lobby"\)/);
+  assert.match(hook, /onRoomAssigned\(\(event\) => \{/);
+  assert.match(hook, /if \(event\.roomId\) void enterRoom\(event\.roomId\)/);
+  assert.ok(hook.indexOf("game.connect()") < hook.indexOf("game.join(roomId)"));
+
+  // Inside Usions the primary action is the invite, not a local game.
+  assert.match(game, /usion\.embedded/);
+  assert.match(game, /INVITE A FRIEND/);
+});

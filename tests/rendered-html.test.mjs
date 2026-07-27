@@ -23,7 +23,10 @@ test("server-renders the 4x4 chess home screen", async () => {
   assert.match(html, /<title>4×4 Chess: Last Man Stand<\/title>/i);
   assert.match(html, /4×4 CHESS/);
   assert.match(html, /LAST MAN STAND/);
-  assert.match(html, /LOCAL DEMO/);
+  // Server render is the pre-SDK state, so the out-of-host fallback shows.
+  // Self-play is never offered as the in-Usions path.
+  assert.match(html, /PRACTICE ON THIS DEVICE/);
+  assert.doesNotMatch(html, /LOCAL DEMO/);
   assert.match(html, /HOW TO PLAY/);
   assert.match(html, /https:\/\/usions\.com\/usion-sdk\.js/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
