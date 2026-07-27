@@ -54,10 +54,27 @@ function PieceGlyph({ piece, small = false }: { piece: Piece; small?: boolean })
   );
 }
 
+const TRAY_ROW = RESERVE_ORDER.length / 2;
+
+// Pawns line up in front of the back rank, as on a real board. "Front" is the
+// row nearest the board, so the two trays mirror each other: your pawns sit on
+// the tray's top row, the opponent's on their bottom row. Each row keeps its
+// own seven slots so deploying from one never reflows the other.
+function traySlots(pieces: Piece[], pawnsFirst: boolean): Array<Piece | null> {
+  const pawns = pieces.filter((piece) => piece.type === "pawn");
+  const others = pieces.filter((piece) => piece.type !== "pawn");
+  const [first, second] = pawnsFirst ? [pawns, others] : [others, pawns];
+  return [
+    ...Array.from({ length: TRAY_ROW }, (_, index) => first[index] ?? null),
+    ...Array.from({ length: TRAY_ROW }, (_, index) => second[index] ?? null),
+  ];
+}
+
 function ReserveTray({
   color,
   label,
   pieces,
+  pawnsFirst,
   active,
   selection,
   onSelect,
@@ -65,6 +82,7 @@ function ReserveTray({
   color: Color;
   label: string;
   pieces: Piece[];
+  pawnsFirst: boolean;
   active: boolean;
   selection: Selection;
   onSelect: (piece: Piece) => void;
@@ -76,8 +94,7 @@ function ReserveTray({
         <strong>{pieces.length}</strong>
       </div>
       <div className="reserve-grid">
-        {Array.from({ length: RESERVE_ORDER.length }, (_, index) => {
-          const piece = pieces[index];
+        {traySlots(pieces, pawnsFirst).map((piece, index) => {
           if (!piece) return <span className="reserve-slot empty-slot" key={index} />;
           const selected = selection?.source === "reserve" && selection.id === piece.id;
           return (
@@ -399,6 +416,7 @@ export default function Game() {
           color={topColor}
           label={seated ? "OPPONENT" : topColor === "white" ? "PLAYER 1" : "PLAYER 2"}
           pieces={reserves[topColor]}
+          pawnsFirst={false}
           active={turn === topColor && canInteract}
           selection={selection}
           onSelect={selectReserve}
@@ -432,6 +450,7 @@ export default function Game() {
           color={seatColor}
           label={seated ? "YOU" : seatColor === "white" ? "PLAYER 1" : "PLAYER 2"}
           pieces={reserves[seatColor]}
+          pawnsFirst
           active={turn === seatColor && canInteract}
           selection={selection}
           onSelect={selectReserve}

@@ -72,6 +72,11 @@ test("each player views the board from their own side", async () => {
   assert.match(game, /color=\{topColor\}/);
   assert.match(game, /color=\{seatColor\}/);
   assert.match(game, /const topColor = otherColor\(seatColor\)/);
+
+  // Pawns stand in front of the back rank on both sides, which mirrors: your
+  // pawn row is the tray's top row, the opponent's is their bottom row.
+  assert.match(game, /pawnsFirst=\{false\}/);
+  assert.match(game, /\n\s+pawnsFirst\n/);
 });
 
 test("the SDK boots inside the mobile WebView, not just an iframe", async () => {
