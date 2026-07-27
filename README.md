@@ -37,6 +37,20 @@ npm run dev
 npm test
 ```
 
+## Deploy
+
+The game is hosted from this repository, never from `usionthemobile`. Railway
+runs it as a Node process: Railpack builds with `npm run build` and serves with
+`npm start`, which binds Railway's `$PORT` (`railway.json`).
+
+```bash
+railway init --name usion-4x4-chess
+railway up -y -c --service usion-4x4-chess
+railway domain
+```
+
+Redeploy later with `railway up -y -c --service usion-4x4-chess`.
+
 ## Register on Usions
 
 Usions hosts no game code of its own. A game lives in its own repository, is
