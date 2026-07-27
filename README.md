@@ -45,11 +45,26 @@ runs it as a Node process: Railpack builds with `npm run build` and serves with
 
 ```bash
 railway init --name usion-4x4-chess
+railway add --service usion-4x4-chess
 railway up -y -c --service usion-4x4-chess
 railway domain
 ```
 
 Redeploy later with `railway up -y -c --service usion-4x4-chess`.
+
+## Production
+
+| | |
+| --- | --- |
+| URL | https://usion-4x4-chess-production.up.railway.app/ |
+| Host | Railway — `usion-4x4-chess` project/service, `npm start`, healthcheck `/` |
+| Usion service id | `4-4-chess-last-man-stand-891b95f2` (`service_type: game`, published) |
+| Transport | `multiplayer.profile: state` — platform relay, `realtime: null`, 2 seats |
+| SDK | v2 / protocol 2, matching `https://usions.com/usion-sdk.js` |
+| Leaderboard | none — chess produces a winner, not a score |
+
+No change was made to `usionthemobile`. The game appears on the platform purely
+through its registry entry.
 
 ## Register on Usions
 

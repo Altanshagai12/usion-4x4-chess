@@ -6,11 +6,15 @@
 - [x] Build the registry publisher in this repository (`npm run publish:service`),
       pinned to the `state` multiplayer profile so the match stays on the
       platform relay that `syncedState` needs.
-- [ ] Deploy the exact tested commit from this standalone repository.
-- [ ] Run `npm run publish:service` with `USION_SERVICE_URL` set to the deployed
-      origin and a scoped `usion_sk_…` creator token.
-- [ ] Verify the published catalog entry and two-client room.
+- [x] Deploy the tested commit from this standalone repository to Railway
+      (`usion-4x4-chess` project/service).
+- [x] Register the public iframe through the creator API without changing
+      `usionthemobile` — service id `4-4-chess-last-man-stand-891b95f2`.
+- [x] Verify the published catalog entry: platform-relay transport
+      (`realtime: null`), 2–2 seats, `service_type: game`, published.
+- [ ] Play a two-phone match from a chat game invite to confirm the room end to
+      end (needs two real Usions accounts).
 
-Both open items need credentials this repository does not carry: a deployment
-target for the iframe origin and a creator API token. `usionthemobile` stays
-untouched — the platform picks the game up from its registry entry alone.
+Redeploy with `railway up -y -c --service usion-4x4-chess`, then re-run
+`npm run publish:service` with `USION_SERVICE_URL` and a `usion_sk_…` token if
+the catalog entry itself needs updating.
