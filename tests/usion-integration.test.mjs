@@ -114,3 +114,38 @@ test("a hosted match is unplayable until both seats are connected", async () => 
   // can never fall back to offline play inside Usions.
   assert.ok(hook.indexOf("setEmbedded(true)") < hook.indexOf("while (!window.Usion"));
 });
+
+test("last moves, the one-minute clock, and preset messages are visible in-game", async () => {
+  const [engine, game, hook, styles] = await Promise.all([
+    readFile(new URL("app/chess-engine.ts", root), "utf8"),
+    readFile(new URL("app/Game.tsx", root), "utf8"),
+    readFile(new URL("app/useUsionGame.ts", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // A deadline is part of ordered shared state, so both phones count down from
+  // the same turn boundary and the current player submits the timeout action.
+  assert.match(engine, /TURN_DURATION_MS = 60_000/);
+  assert.match(engine, /turnDeadline:\s*number \| null/);
+  assert.match(engine, /action\.type === "timeout"/);
+  assert.match(hook, /\.commit\(\s*"start"/);
+  assert.match(hook, /commit\("timeout", \{\}\)/);
+  assert.match(game, /className=\{`turn-timer/);
+
+  // The exact origin and destination are persisted, rendered as coordinates,
+  // and highlighted independently of each player's rotated board view.
+  assert.match(engine, /lastMove:\s*LastMove \| null/);
+  assert.match(game, /state\.lastMove\?\.from === index/);
+  assert.match(game, /state\.lastMove\?\.to === index/);
+  assert.match(game, /LAST MOVE/);
+  assert.match(styles, /\.square\.last-from/);
+  assert.match(styles, /\.square\.last-to/);
+
+  // Chat is intentionally preset-only and travels over the game realtime
+  // channel; there is no arbitrary text input or platform-side feature.
+  assert.match(hook, /QUICK_MESSAGES/);
+  assert.match(hook, /game\.onRealtime/);
+  assert.match(hook, /game\.realtime\("quick_message"/);
+  assert.match(game, /QUICK_MESSAGES\.map/);
+  assert.doesNotMatch(game, /<input|<textarea/);
+});

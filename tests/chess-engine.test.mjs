@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   GLYPHS,
   RESERVE_ORDER,
+  TURN_DURATION_MS,
   canDeploy,
   createInitialChessState,
   getDeployTargets,
@@ -32,6 +33,9 @@ test("each side is dealt the full fourteen-piece tray", () => {
   );
   assert.equal(RESERVE_ORDER.filter((type) => type === "pawn").length, 7);
   assert.equal(state.turn, "white");
+  assert.equal(state.lastMove, null);
+  assert.equal(state.turnDeadline, null);
+  assert.equal(TURN_DURATION_MS, 60_000);
 });
 
 test("every glyph is pinned to text presentation", () => {
@@ -53,9 +57,18 @@ test("deployments are ordered and reject an out-of-turn action", () => {
     color: "white",
     pieceId: whitePawn.id,
     index: 12,
+    nextDeadline: 123_456,
   });
   assert.equal(afterWhite.board[12]?.color, "white");
   assert.equal(afterWhite.turn, "black");
+  assert.equal(afterWhite.turnDeadline, 123_456);
+  assert.deepEqual(afterWhite.lastMove, {
+    kind: "deploy",
+    color: "white",
+    from: null,
+    to: 12,
+    pieceType: "pawn",
+  });
 
   const replayedWhite = apply(afterWhite, "deploy", {
     color: "white",
@@ -142,12 +155,51 @@ test("promotion produces a Queen Pawn that moves in every direction", () => {
   assert.equal(result.board[1]?.type, "queen");
   assert.equal(result.captures.white, 1);
   assert.equal(result.winner, null);
+  assert.deepEqual(result.lastMove, {
+    kind: "move",
+    color: "white",
+    from: 4,
+    to: 1,
+    pieceType: "queen",
+  });
 
   // The promoted piece now slides like a queen along ranks, files and diagonals.
   const queenMoves = getMoves(result.board, 1);
   assert.ok(queenMoves.includes(0));
   assert.ok(queenMoves.includes(13));
   assert.ok(queenMoves.includes(4));
+});
+
+test("the host starts a shared clock and a timeout passes the turn", () => {
+  const initial = createInitialChessState();
+  const started = apply(initial, "start", {
+    color: "white",
+    nextDeadline: 10_000,
+  });
+  assert.equal(started.turnDeadline, 10_000);
+  assert.equal(started.turn, "white");
+  assert.equal(started.moveCount, 0);
+
+  const ignoredSecondStart = apply(started, "start", {
+    color: "white",
+    nextDeadline: 20_000,
+  });
+  assert.equal(ignoredSecondStart, started);
+
+  const timedOut = apply(started, "timeout", {
+    color: "white",
+    nextDeadline: 70_000,
+  });
+  assert.equal(timedOut.turn, "black");
+  assert.equal(timedOut.moveCount, 1);
+  assert.equal(timedOut.turnDeadline, 70_000);
+  assert.deepEqual(timedOut.lastMove, {
+    kind: "timeout",
+    color: "white",
+    from: null,
+    to: null,
+  });
+  assert.match(timedOut.lastAction, /ran out of time/);
 });
 
 test("clearing the last rival piece wins the match", () => {
@@ -176,6 +228,6 @@ test("a rival left with no legal action loses instead of deadlocking", () => {
 test("stale schema versions are rebuilt instead of trusted", () => {
   const legacy = { schemaVersion: 3, board: [], reserves: {}, turn: "white" };
   const rebuilt = reduceChess(legacy, { type: "noop", data: {} });
-  assert.equal(rebuilt.schemaVersion, 4);
+  assert.equal(rebuilt.schemaVersion, 5);
   assert.equal(rebuilt.reserves.white.length, RESERVE_ORDER.length);
 });

@@ -231,6 +231,18 @@ h1 strong {
   box-shadow: inset 0 0 0 2px rgba(255,255,255,.12);
   font-size: .82rem; font-weight: 1000; letter-spacing: .04em;
 }
+.turn-copy {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.turn-timer {
+  flex: 0 0 auto; min-width: 48px; margin-left: 1px; padding-left: 9px;
+  border-left: 1px solid rgba(255,255,255,.2); color: var(--yellow);
+  font-variant-numeric: tabular-nums; text-align: center;
+}
+.turn-timer.danger {
+  color: #ff8d93; animation: timer-pulse .75s ease-in-out infinite alternate;
+}
+@keyframes timer-pulse { to { transform: scale(1.08); } }
 .turn-dot { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.7); border-radius: 50%; }
 .turn-white { background: #fff8dd; }
 .turn-black { background: #25283a; }
@@ -297,6 +309,25 @@ h1 strong {
   border-radius: 11px; pointer-events: none;
 }
 .square.capture::after { border-color: #ff6f77; box-shadow: 0 0 14px rgba(255,84,98,.52); }
+.square.last-from {
+  z-index: 1; box-shadow: inset 0 0 0 5px rgba(255,225,91,.72);
+}
+.square.last-from::before {
+  content: ""; position: absolute; z-index: 1; width: 34%; aspect-ratio: 1;
+  border: 4px solid rgba(74,35,124,.72); border-radius: 50%;
+  background: rgba(255,255,255,.18); pointer-events: none;
+}
+.square.last-to {
+  z-index: 1; box-shadow: inset 0 0 0 6px var(--yellow);
+}
+.square.opponent-last {
+  box-shadow: inset 0 0 0 6px #62f2d0, inset 0 0 18px rgba(22,118,118,.32);
+}
+.square.last-to .piece-glyph { animation: last-arrival .38s ease-out; }
+@keyframes last-arrival {
+  from { opacity: .3; transform: translateY(-2%) scale(.55); }
+  to { opacity: 1; transform: translateY(-2%) scale(1); }
+}
 .move-dot { width: 18%; aspect-ratio: 1; border-radius: 50%; background: rgba(45,29,84,.42); }
 /* Both armies share one glyph per type, so the only difference between them is
    the fill/outline below — same silhouette, different colour. Keep the size
@@ -334,15 +365,65 @@ h1 strong {
   position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between;
   gap: 12px; width: min(100%,620px); margin: 0 auto; padding: 8px 16px 13px;
 }
-.game-footer p {
-  max-width: 58%; margin: 0; overflow: hidden; color: rgba(255,255,255,.66);
-  font-size: .7rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap;
+.move-summary {
+  display: grid; min-width: 0; max-width: 58%; gap: 1px;
 }
-.game-footer > div { display: flex; gap: 5px; }
+.move-summary small {
+  color: rgba(255,255,255,.48); font-size: .56rem; font-weight: 1000;
+  letter-spacing: .12em;
+}
+.move-summary strong {
+  overflow: hidden; color: rgba(255,255,255,.9); font-size: .72rem;
+  font-weight: 900; text-overflow: ellipsis; white-space: nowrap;
+}
+.footer-actions { display: flex; gap: 5px; }
 .text-button {
   padding: 8px 10px; border-radius: 9px; background: transparent;
   color: rgba(255,255,255,.75); font-size: .7rem; letter-spacing: .06em;
 }
+.message-button {
+  background: rgba(255,222,92,.14); color: var(--yellow);
+}
+.quick-message-toast {
+  position: fixed; z-index: 12; top: max(68px, calc(env(safe-area-inset-top) + 56px));
+  left: 50%; display: grid; gap: 2px; width: max-content; max-width: calc(100% - 32px);
+  padding: 10px 16px; border: 2px solid rgba(255,255,255,.22); border-radius: 16px;
+  background: rgba(45,14,101,.94); box-shadow: 0 9px 24px rgba(28,4,67,.36);
+  transform: translateX(-50%); animation: message-in .25s ease-out;
+  text-align: center; backdrop-filter: blur(10px);
+}
+.quick-message-toast small {
+  color: var(--yellow); font-size: .55rem; font-weight: 1000; letter-spacing: .12em;
+}
+.quick-message-toast strong { font-size: .9rem; }
+.quick-message-toast.message-you { background: rgba(31,106,104,.94); }
+@keyframes message-in {
+  from { opacity: 0; transform: translate(-50%,-12px) scale(.94); }
+}
+.quick-message-panel {
+  position: fixed; z-index: 14; right: max(14px, env(safe-area-inset-right));
+  bottom: max(62px, calc(env(safe-area-inset-bottom) + 54px));
+  width: min(360px, calc(100% - 28px)); padding: 14px;
+  border: 3px solid rgba(255,255,255,.2); border-radius: 20px;
+  background: linear-gradient(160deg,rgba(92,38,187,.98),rgba(57,17,119,.98));
+  box-shadow: 0 12px 0 rgba(48,14,99,.72), 0 22px 42px rgba(25,4,59,.42);
+  backdrop-filter: blur(12px);
+}
+.quick-message-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; color: var(--yellow); font-size: .67rem; letter-spacing: .08em;
+}
+.quick-message-heading button {
+  display: grid; place-items: center; width: 28px; height: 28px; border: 0;
+  border-radius: 9px; background: rgba(255,255,255,.12); color: white; font-size: 1.1rem;
+}
+.quick-message-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.quick-message-chip {
+  min-height: 43px; padding: 9px 10px; border: 0; border-radius: 11px;
+  background: rgba(255,255,255,.12); color: white; font-size: .78rem;
+  font-weight: 850; text-align: left;
+}
+.quick-message-chip:active { transform: translateY(2px); background: rgba(255,222,92,.23); }
 .winner-overlay {
   position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px;
   background: rgba(37,8,84,.76); backdrop-filter: blur(10px);
@@ -393,8 +474,12 @@ h1 strong {
 }
 @media (max-width: 390px) {
   .game-header .icon-button { width: 43px; height: 43px; }
-  .turn-pill { padding-inline: 12px; font-size: .72rem; }
+  .turn-pill { max-width: calc(100% - 98px); padding-inline: 10px; gap: 6px; font-size: .68rem; }
+  .turn-timer { min-width: 42px; padding-left: 6px; }
   .board { width: min(78vw,330px); padding: 6px; }
+  .move-summary { max-width: 48%; }
+  .game-footer { gap: 5px; padding-inline: 10px; }
+  .text-button { padding-inline: 7px; font-size: .63rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

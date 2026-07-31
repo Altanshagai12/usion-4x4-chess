@@ -5,10 +5,29 @@ import {
   ChessAction,
   ChessState,
   Color,
+  TURN_DURATION_MS,
   createInitialChessState,
   otherColor,
   reduceChess,
 } from "./chess-engine";
+
+export const QUICK_MESSAGES = [
+  { id: "hurry", text: "Хурдлаарай ⏱️" },
+  { id: "nice_move", text: "Гоё нүүдэл! 👏" },
+  { id: "ready", text: "Би бэлэн байна" },
+  { id: "good_luck", text: "Амжилт! 🍀" },
+  { id: "rematch", text: "Дахин тоглох уу?" },
+] as const;
+
+type QuickMessage = {
+  id: string;
+  text: string;
+  from: "you" | "opponent";
+  nonce: number;
+};
+
+const findQuickMessage = (id: unknown) =>
+  QUICK_MESSAGES.find((message) => message.id === id);
 
 type Connection =
   | "standalone"
@@ -29,6 +48,12 @@ type UsionConfig = {
 type RosterEvent = {
   player_id?: string;
   player_ids?: string[];
+};
+
+type RealtimeEvent = {
+  player_id?: string;
+  action_type?: string;
+  action_data?: Record<string, unknown>;
 };
 
 type SyncedAction = {
@@ -61,6 +86,10 @@ type UsionGame = {
   isMultiplayer(): boolean;
   // The platform owns the friend/group picker; the game never draws its own.
   invite(options?: Record<string, unknown>): Promise<InviteResult>;
+  realtime(
+    type: string,
+    data?: Record<string, unknown>,
+  ): void | Promise<void>;
   syncedState(
     initial: ChessState,
     options: {
@@ -72,6 +101,7 @@ type UsionGame = {
   onJoined(handler: (event: RosterEvent) => void): (() => void) | void;
   onPlayerJoined(handler: (event: RosterEvent) => void): (() => void) | void;
   onPlayerLeft(handler: (event: RosterEvent) => void): (() => void) | void;
+  onRealtime(handler: (event: RealtimeEvent) => void): (() => void) | void;
   onRoomAssigned(
     handler: (event: { roomId: string }) => void,
   ): (() => void) | void;
@@ -124,9 +154,43 @@ export function useUsionGame() {
   const [pending, setPending] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState("");
+  const [quickMessage, setQuickMessage] = useState<QuickMessage | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const sharedRef = useRef<SharedState | null>(null);
   const playerIdsRef = useRef<string[]>([]);
   const inviteRef = useRef<(() => Promise<boolean>) | null>(null);
+  const quickMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quickMessageCooldownRef = useRef(0);
+  const startingClockRef = useRef(false);
+  const timeoutTurnRef = useRef("");
+
+  const showQuickMessage = useCallback(
+    (message: (typeof QUICK_MESSAGES)[number], from: QuickMessage["from"]) => {
+      if (quickMessageTimerRef.current) {
+        clearTimeout(quickMessageTimerRef.current);
+      }
+      setQuickMessage({
+        id: message.id,
+        text: message.text,
+        from,
+        nonce: Date.now(),
+      });
+      quickMessageTimerRef.current = setTimeout(
+        () => setQuickMessage(null),
+        3_200,
+      );
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      if (quickMessageTimerRef.current) {
+        clearTimeout(quickMessageTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // Both seats filled means the match is live. `started` latches on so a later
   // blip shows a reconnect notice rather than throwing players back to the
@@ -250,6 +314,16 @@ export function useUsionGame() {
           updateRoster(event.player_ids);
           setError("Your opponent left the match.");
         }));
+        addCleanup(cleanups, usion.game.onRealtime((event) => {
+          if (
+            event.action_type !== "quick_message" ||
+            event.player_id === currentUserId
+          ) {
+            return;
+          }
+          const message = findQuickMessage(event.action_data?.id);
+          if (message) showQuickMessage(message, "opponent");
+        }));
         // A solo launch is promoted into a room by the host Share button or by
         // game.invite(). Joining here is what makes that promotion real —
         // without it the game would hold a room id it never entered.
@@ -306,7 +380,7 @@ export function useUsionGame() {
       sharedRef.current?.destroy();
       sharedRef.current = null;
     };
-  }, [applySeatState, updateRoster]);
+  }, [applySeatState, showQuickMessage, updateRoster]);
 
   const seatIndex = playerIds.indexOf(userId);
   const userColor: Color | null =
@@ -315,7 +389,7 @@ export function useUsionGame() {
 
   const commit = useCallback(
     async (
-      type: "deploy" | "move" | "reset",
+      type: "deploy" | "move" | "reset" | "timeout",
       data: Record<string, unknown>,
     ) => {
       const shared = sharedRef.current;
@@ -328,7 +402,10 @@ export function useUsionGame() {
       setPending(true);
       setError("");
       try {
-        await shared.commit(type, data, {
+        await shared.commit(type, {
+          ...data,
+          nextDeadline: Date.now() + TURN_DURATION_MS,
+        }, {
           nextTurn,
           queueOffline: true,
         });
@@ -343,6 +420,126 @@ export function useUsionGame() {
       }
     },
     [canAct, playerIds, userColor],
+  );
+
+  useEffect(() => {
+    if (
+      !active ||
+      connection !== "ready" ||
+      playerIds.length < 2 ||
+      playerIds[0] !== userId ||
+      state.winner ||
+      state.turnDeadline !== null ||
+      startingClockRef.current
+    ) {
+      return;
+    }
+
+    const shared = sharedRef.current;
+    if (!shared) return;
+    startingClockRef.current = true;
+    void shared
+      .commit(
+        "start",
+        { nextDeadline: Date.now() + TURN_DURATION_MS },
+        { nextTurn: playerIds[0], queueOffline: true },
+      )
+      .catch((reason) => {
+        startingClockRef.current = false;
+        setError(
+          reason instanceof Error ? reason.message : "Clock did not start",
+        );
+      });
+  }, [
+    active,
+    connection,
+    playerIds,
+    state.turnDeadline,
+    state.winner,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (state.turnDeadline !== null) startingClockRef.current = false;
+    if (
+      !active ||
+      connection !== "ready" ||
+      state.winner ||
+      state.turnDeadline === null
+    ) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => setNow(Date.now()));
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearInterval(timer);
+    };
+  }, [active, connection, state.turnDeadline, state.winner]);
+
+  const remainingMs =
+    state.turnDeadline === null
+      ? TURN_DURATION_MS
+      : Math.max(0, state.turnDeadline - now);
+
+  useEffect(() => {
+    if (
+      !active ||
+      connection !== "ready" ||
+      state.winner ||
+      state.turnDeadline === null ||
+      remainingMs > 0 ||
+      !canAct
+    ) {
+      return;
+    }
+
+    const turnKey = `${state.moveCount}:${state.turnDeadline}`;
+    if (timeoutTurnRef.current === turnKey) return;
+    timeoutTurnRef.current = turnKey;
+    void commit("timeout", {}).then((sent) => {
+      if (!sent) timeoutTurnRef.current = "";
+    });
+  }, [
+    active,
+    canAct,
+    commit,
+    connection,
+    remainingMs,
+    state.moveCount,
+    state.turnDeadline,
+    state.winner,
+  ]);
+
+  const sendQuickMessage = useCallback(
+    async (id: string) => {
+      const message = findQuickMessage(id);
+      const usion = window.Usion;
+      if (
+        !message ||
+        !usion ||
+        !active ||
+        connection !== "ready" ||
+        Date.now() < quickMessageCooldownRef.current
+      ) {
+        return false;
+      }
+
+      quickMessageCooldownRef.current = Date.now() + 1_500;
+      try {
+        await Promise.resolve(
+          usion.game.realtime("quick_message", { id: message.id }),
+        );
+        showQuickMessage(message, "you");
+        return true;
+      } catch (reason) {
+        setError(
+          reason instanceof Error ? reason.message : "Message was not sent",
+        );
+        return false;
+      }
+    },
+    [active, connection, showQuickMessage],
   );
 
   const invite = useCallback(async () => {
@@ -369,7 +566,10 @@ export function useUsionGame() {
     pending,
     inviting,
     error,
+    remainingMs,
+    quickMessage,
     commit,
+    sendQuickMessage,
     invite,
     recover,
     opponentColor: userColor ? otherColor(userColor) : null,

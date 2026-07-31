@@ -17,7 +17,7 @@ import {
   reduceChess,
   row,
 } from "./chess-engine";
-import { useUsionGame } from "./useUsionGame";
+import { QUICK_MESSAGES, useUsionGame } from "./useUsionGame";
 
 type Screen = "home" | "rules" | "game";
 type Selection =
@@ -28,7 +28,7 @@ type Selection =
 const RULES = [
   {
     title: "PUT PIECES INSIDE THE MAIN BOARD",
-    copy: "On your turn, either drop one piece from your tray onto an empty square, or move a piece already in play. A pawn can never be dropped straight onto its promotion rank.",
+    copy: "You have 60 seconds to either drop one piece from your tray onto an empty square, or move a piece already in play. A pawn can never be dropped straight onto its promotion rank.",
     art: "deploy",
   },
   {
@@ -52,6 +52,22 @@ function PieceGlyph({ piece, small = false }: { piece: Piece; small?: boolean })
       {GLYPHS[piece.type]}
     </span>
   );
+}
+
+const squareName = (index: number) =>
+  `${String.fromCharCode(65 + col(index))}${4 - row(index)}`;
+
+function lastMoveText(state: ChessState) {
+  const move = state.lastMove;
+  if (!move) return "No moves yet";
+  if (move.kind === "timeout") return `${move.color.toUpperCase()} · TIME EXPIRED`;
+  if (move.kind === "deploy" && move.to !== null) {
+    return `${move.color.toUpperCase()} · DEPLOY → ${squareName(move.to)}`;
+  }
+  if (move.from !== null && move.to !== null) {
+    return `${move.color.toUpperCase()} · ${squareName(move.from)} → ${squareName(move.to)}`;
+  }
+  return state.lastAction;
 }
 
 const TRAY_ROW = RESERVE_ORDER.length / 2;
@@ -162,6 +178,7 @@ export default function Game() {
   const [localState, setLocalState] = useState<ChessState>(() => createInitialChessState());
   const [selection, setSelection] = useState<Selection>(null);
   const [soundOn, setSoundOn] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const state = usion.active ? usion.state : localState;
   const { board, reserves, turn, winner, captures } = state;
 
@@ -389,6 +406,13 @@ export default function Game() {
   const viewIndex = (slot: number) => (flipped ? 15 - slot : slot);
   const topColor = otherColor(seatColor);
   const seated = Boolean(usion.userColor);
+  const secondsLeft = Math.ceil(usion.remainingMs / 1_000);
+  const timerText = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`;
+  const lastMoveByOpponent = Boolean(
+    state.lastMove &&
+    usion.userColor &&
+    state.lastMove.color !== usion.userColor,
+  );
 
   return (
     <main className="game-shell play-screen">
@@ -404,12 +428,31 @@ export default function Game() {
         <button className="icon-button" onClick={() => setScreen("home")} aria-label="Home">⌂</button>
         <div className="turn-pill" aria-live="polite">
           <span className={`turn-dot turn-${turn}`} />
-          {winner ? `${winner === "white" ? "WHITE" : "BLACK"} WINS` : usion.active ? `${myLabel} · ${turn.toUpperCase()}'S TURN` : myLabel}
+          <span className="turn-copy">
+            {winner ? `${winner === "white" ? "WHITE" : "BLACK"} WINS` : usion.active ? `${myLabel} · ${turn.toUpperCase()}'S TURN` : myLabel}
+          </span>
+          {usion.active && !winner && (
+            <strong className={`turn-timer${secondsLeft <= 10 ? " danger" : ""}`}>
+              {timerText}
+            </strong>
+          )}
         </div>
         <button className="icon-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "Mute sound" : "Turn sound on"}>
           {soundOn ? "♪" : "×"}
         </button>
       </header>
+
+      {usion.quickMessage && (
+        <div
+          className={`quick-message-toast message-${usion.quickMessage.from}`}
+          key={usion.quickMessage.nonce}
+          role="status"
+          aria-live="polite"
+        >
+          <small>{usion.quickMessage.from === "you" ? "YOU" : "OPPONENT"}</small>
+          <strong>{usion.quickMessage.text}</strong>
+        </div>
+      )}
 
       <div className="game-stage">
         <ReserveTray
@@ -430,11 +473,13 @@ export default function Game() {
               const selected = selection?.source === "board" && selection.index === index;
               const legal = legalTargets.includes(index);
               const capture = legal && !!piece && piece.color !== turn;
+              const lastFrom = state.lastMove?.from === index;
+              const lastTo = state.lastMove?.to === index;
               return (
                 <button
                   key={index}
                   role="gridcell"
-                  className={`square square-${(row(index) + col(index)) % 2 ? "dark" : "light"}${selected ? " selected" : ""}${legal ? " legal" : ""}${capture ? " capture" : ""}`}
+                  className={`square square-${(row(index) + col(index)) % 2 ? "dark" : "light"}${selected ? " selected" : ""}${legal ? " legal" : ""}${capture ? " capture" : ""}${lastFrom ? " last-from" : ""}${lastTo ? " last-to" : ""}${lastMoveByOpponent && (lastFrom || lastTo) ? " opponent-last" : ""}`}
                   onClick={() => selectSquare(index)}
                   aria-label={`${String.fromCharCode(97 + col(index))}${4 - row(index)}${piece ? `, ${piece.color} ${NAMES[piece.type]}` : ", empty"}`}
                 >
@@ -458,12 +503,52 @@ export default function Game() {
       </div>
 
       <footer className="game-footer">
-        <p>{usion.pending ? "Sending move…" : state.lastAction}</p>
-        <div>
+        <div className="move-summary" aria-live="polite">
+          <small>{usion.pending ? "SENDING MOVE…" : "LAST MOVE"}</small>
+          <strong>{usion.pending ? state.lastAction : lastMoveText(state)}</strong>
+        </div>
+        <div className="footer-actions">
+          {usion.active && (
+            <button
+              className="text-button message-button"
+              onClick={() => setChatOpen((open) => !open)}
+              aria-expanded={chatOpen}
+              aria-controls="quick-message-panel"
+            >
+              MESSAGE
+            </button>
+          )}
           <button className="text-button" onClick={() => setScreen("rules")}>RULES</button>
           {!usion.active && <button className="text-button" onClick={resetGame}>RESTART</button>}
         </div>
       </footer>
+
+      {usion.active && chatOpen && (
+        <aside
+          className="quick-message-panel"
+          id="quick-message-panel"
+          aria-label="Quick messages"
+        >
+          <div className="quick-message-heading">
+            <strong>SEND A QUICK MESSAGE</strong>
+            <button onClick={() => setChatOpen(false)} aria-label="Close messages">×</button>
+          </div>
+          <div className="quick-message-list">
+            {QUICK_MESSAGES.map((message) => (
+              <button
+                className="quick-message-chip"
+                key={message.id}
+                onClick={() => {
+                  setChatOpen(false);
+                  void usion.sendQuickMessage(message.id);
+                }}
+              >
+                {message.text}
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
 
       {winner && (
         <div className="winner-overlay" role="dialog" aria-modal="true">
