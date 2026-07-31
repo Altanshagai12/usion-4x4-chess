@@ -284,24 +284,29 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
 
   const elapsed = elapsedFrom(action.data);
   if (state.clockRunning && elapsed === null) return state;
+  // A room-ready client always includes elapsedMs. If the one-time shared
+  // `start` action was missed by the mobile relay, the first move or timeout
+  // becomes the clock-start boundary instead of leaving both clocks at 5:00.
+  const clockActive = state.clockRunning || elapsed !== null;
   const remaining = Math.max(
     0,
-    state.clocks[color] - (state.clockRunning ? elapsed ?? 0 : 0),
+    state.clocks[color] - (clockActive ? elapsed ?? 0 : 0),
   );
 
   if (action.type === "timeout") {
-    if (!state.clockRunning || elapsed === null || remaining > 0) {
+    if (!clockActive || elapsed === null || remaining > 0) {
       return state;
     }
     return loseOnTime(state, color);
   }
 
-  if (remaining <= 0 && state.clockRunning) {
+  if (remaining <= 0 && clockActive) {
     return loseOnTime(state, color);
   }
 
   const timedState = {
     ...state,
+    clockRunning: clockActive,
     clocks: { ...state.clocks, [color]: remaining },
   };
 

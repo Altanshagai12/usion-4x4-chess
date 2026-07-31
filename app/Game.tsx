@@ -20,6 +20,7 @@ import {
 import { QUICK_MESSAGES, useUsionGame } from "./useUsionGame";
 
 type Screen = "home" | "rules" | "game";
+const clockNow = () => Date.now();
 type Selection =
   | { source: "board"; index: number }
   | { source: "reserve"; color: Color; id: string; type: PieceType }
@@ -199,6 +200,8 @@ export default function Game() {
   const [screen, setScreen] = useState<Screen>("home");
   const [rulePage, setRulePage] = useState(0);
   const [localState, setLocalState] = useState<ChessState>(() => createInitialChessState());
+  const [localNow, setLocalNow] = useState(() => Date.now());
+  const [localTurnStartedAt, setLocalTurnStartedAt] = useState(() => Date.now());
   const [selection, setSelection] = useState<Selection>(null);
   const [soundOn, setSoundOn] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
@@ -214,6 +217,43 @@ export default function Game() {
     const frame = requestAnimationFrame(() => setSelection(null));
     return () => cancelAnimationFrame(frame);
   }, [state.moveCount]);
+  useEffect(() => {
+    if (
+      usion.active ||
+      screen !== "game" ||
+      !localState.clockRunning ||
+      localState.winner
+    ) {
+      return;
+    }
+    const tick = () => {
+      const timestamp = Date.now();
+      const elapsedMs = Math.max(0, timestamp - localTurnStartedAt);
+      setLocalNow(timestamp);
+      if (elapsedMs >= localState.clocks[localState.turn]) {
+        setLocalState((current) =>
+          reduceChess(current, {
+            type: "timeout",
+            data: { color: current.turn, elapsedMs },
+          }),
+        );
+      }
+    };
+    const frame = requestAnimationFrame(tick);
+    const timer = setInterval(tick, 250);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearInterval(timer);
+    };
+  }, [
+    localState.clockRunning,
+    localState.clocks,
+    localState.turn,
+    localState.winner,
+    localTurnStartedAt,
+    screen,
+    usion.active,
+  ]);
 
   // Inside Usions every move must go through the room, so the board is live
   // only on your own turn. Offline hot-seat exists solely outside the host.
@@ -234,15 +274,34 @@ export default function Game() {
       await usion.commit(type, data);
       return;
     }
+    const actionTime = clockNow();
+    const elapsedMs = localState.clockRunning
+      ? Math.max(0, actionTime - localTurnStartedAt)
+      : 0;
     setLocalState((current) =>
-      reduceChess(current, { type, data: { ...data, color: current.turn } }),
+      reduceChess(current, {
+        type,
+        data: { ...data, color: current.turn, elapsedMs },
+      }),
     );
+    setLocalTurnStartedAt(actionTime);
+    setLocalNow(actionTime);
   };
 
   const resetGame = () => {
     setSelection(null);
     if (usion.active && winner) void dispatch("reset", {});
-    else if (!usion.active) setLocalState(createInitialChessState());
+    else if (!usion.active) {
+      const startedAt = clockNow();
+      setLocalState(
+        reduceChess(createInitialChessState(), {
+          type: "start",
+          data: { color: "white" },
+        }),
+      );
+      setLocalTurnStartedAt(startedAt);
+      setLocalNow(startedAt);
+    }
     setScreen("game");
   };
 
@@ -429,7 +488,18 @@ export default function Game() {
   const viewIndex = (slot: number) => (flipped ? 15 - slot : slot);
   const topColor = otherColor(seatColor);
   const seated = Boolean(usion.userColor);
-  const clocks = usion.active ? usion.remainingByColor : state.clocks;
+  const localElapsed = state.clockRunning
+    ? Math.max(0, localNow - localTurnStartedAt)
+    : 0;
+  const localRemaining = Math.max(
+    0,
+    state.clocks[state.turn] - localElapsed,
+  );
+  const localClocks: Record<Color, number> = {
+    ...state.clocks,
+    [state.turn]: localRemaining,
+  };
+  const clocks = usion.active ? usion.remainingByColor : localClocks;
   const lastMoveByOpponent = Boolean(
     state.lastMove &&
     usion.userColor &&
@@ -480,7 +550,7 @@ export default function Game() {
           active={turn === topColor && canInteract}
           clockMs={clocks[topColor]}
           clockPosition="above"
-          clockRunning={!winner && turn === topColor && state.clockRunning}
+          clockRunning={!winner && turn === topColor && (usion.active ? usion.clockRunning : state.clockRunning)}
           selection={selection}
           onSelect={selectReserve}
         />
@@ -519,7 +589,7 @@ export default function Game() {
           active={turn === seatColor && canInteract}
           clockMs={clocks[seatColor]}
           clockPosition="below"
-          clockRunning={!winner && turn === seatColor && state.clockRunning}
+          clockRunning={!winner && turn === seatColor && (usion.active ? usion.clockRunning : state.clockRunning)}
           selection={selection}
           onSelect={selectReserve}
         />

@@ -39,6 +39,16 @@ test("online actions render optimistically before the shared-state echo", async 
   assert.match(hook, /state:\s*displayState/);
 });
 
+test("standalone web practice also runs the active five-minute clock", async () => {
+  const game = await readFile(new URL("app/Game.tsx", root), "utf8");
+  assert.match(game, /const \[localNow, setLocalNow\]/);
+  assert.match(game, /const \[localTurnStartedAt, setLocalTurnStartedAt\]/);
+  assert.match(game, /setInterval\(tick, 250\)/);
+  assert.match(game, /type: "start"/);
+  assert.match(game, /type: "timeout"/);
+  assert.match(game, /const localRemaining = Math\.max/);
+});
+
 test("a second player arrives through the platform invite, never self-play", async () => {
   const [hook, game] = await Promise.all([
     readFile(new URL("app/useUsionGame.ts", root), "utf8"),
@@ -114,7 +124,7 @@ test("a hosted match is unplayable until both seats are connected", async () => 
   // `started` latches on both seats being present, so a mid-match blip shows
   // the reconnect notice instead of bouncing players back to the lobby.
   assert.match(hook, /const ready = ids\.length >= 2;/);
-  assert.match(hook, /if \(ready\) setStarted\(true\);/);
+  assert.match(hook, /if \(ready\) \{[\s\S]*setStarted\(true\);/);
   // Being hosted is asserted before the SDK resolves, so a slow or failed SDK
   // can never fall back to offline play inside Usions.
   assert.ok(hook.indexOf("setEmbedded(true)") < hook.indexOf("while (!window.Usion"));
@@ -140,6 +150,9 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(hook, /commit\("timeout", \{\}\)/);
   assert.match(hook, /state\?\.schemaVersion === 7/);
   assert.match(hook, /localTurnStartedAt/);
+  assert.match(hook, /roomClockActive/);
+  assert.match(hook, /const clockLive = displayState\.clockRunning \|\| roomClockActive/);
+  assert.match(hook, /setRoomClockActive\(ready\)/);
   assert.doesNotMatch(hook, /actedAt|startedAt:\s*actionTime/);
   assert.match(game, /clockPosition="above"/);
   assert.match(game, /clockPosition="below"/);

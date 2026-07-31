@@ -211,6 +211,22 @@ test("only the active player's five-minute clock runs", () => {
   assert.equal(afterBlack.clockRunning, true);
 });
 
+test("the first timed move starts clocks when the relay missed start", () => {
+  const initial = createInitialChessState();
+  const whitePawn = initial.reserves.white.find((piece) => piece.type === "pawn");
+  const afterWhite = apply(initial, "deploy", {
+    color: "white",
+    pieceId: whitePawn.id,
+    index: 12,
+    elapsedMs: 5_000,
+  });
+
+  assert.equal(afterWhite.board[12]?.color, "white");
+  assert.equal(afterWhite.clockRunning, true);
+  assert.deepEqual(afterWhite.clocks, { white: 295_000, black: 300_000 });
+  assert.equal(afterWhite.turn, "black");
+});
+
 test("reaching zero loses the match instead of passing the turn", () => {
   const started = apply(createInitialChessState(), "start", {
     color: "white",

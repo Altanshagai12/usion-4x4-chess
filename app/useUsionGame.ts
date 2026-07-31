@@ -161,6 +161,7 @@ export function useUsionGame() {
   const [quickMessage, setQuickMessage] = useState<QuickMessage | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [localTurnStartedAt, setLocalTurnStartedAt] = useState(0);
+  const [roomClockActive, setRoomClockActive] = useState(false);
   const sharedRef = useRef<SharedState | null>(null);
   const playerIdsRef = useRef<string[]>([]);
   const inviteRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -170,6 +171,7 @@ export function useUsionGame() {
   const timeoutTurnRef = useRef("");
   const optimisticStateKeyRef = useRef<string | null>(null);
   const turnAnchorKeyRef = useRef("");
+  const readyClockStartedRef = useRef(false);
 
   const stateKey = useCallback(
     (next: ChessState) =>
@@ -233,7 +235,19 @@ export function useUsionGame() {
   const applySeatState = useCallback((ids: string[]) => {
     const ready = ids.length >= 2;
     setConnection(ready ? "ready" : "waiting");
-    if (ready) setStarted(true);
+    setRoomClockActive(ready);
+    if (ready) {
+      setStarted(true);
+      if (!readyClockStartedRef.current) {
+        const startedAt = Date.now();
+        readyClockStartedRef.current = true;
+        turnAnchorKeyRef.current = `room-ready:${startedAt}`;
+        setLocalTurnStartedAt(startedAt);
+        setNow(startedAt);
+      }
+    } else {
+      readyClockStartedRef.current = false;
+    }
   }, []);
 
   const updateRoster = useCallback(
@@ -424,6 +438,7 @@ export function useUsionGame() {
   const userColor: Color | null =
     seatIndex === 0 ? "white" : seatIndex === 1 ? "black" : null;
   const canAct = connection === "ready" && userColor === state.turn && !pending;
+  const sharedClockActive = state.clockRunning || roomClockActive;
 
   const commit = useCallback(
     async (
@@ -442,7 +457,7 @@ export function useUsionGame() {
       const actionTime = Date.now();
       const previousAnchorKey = turnAnchorKeyRef.current;
       const previousLocalTurnStartedAt = localTurnStartedAt;
-      const elapsedMs = state.clockRunning
+      const elapsedMs = sharedClockActive
         ? Math.max(0, actionTime - localTurnStartedAt)
         : 0;
       const actionData = { ...data, elapsedMs };
@@ -476,7 +491,15 @@ export function useUsionGame() {
         setPending(false);
       }
     },
-    [canAct, localTurnStartedAt, playerIds, state, stateKey, userColor],
+    [
+      canAct,
+      localTurnStartedAt,
+      playerIds,
+      sharedClockActive,
+      state,
+      stateKey,
+      userColor,
+    ],
   );
 
   useEffect(() => {
@@ -517,6 +540,7 @@ export function useUsionGame() {
   ]);
 
   const displayState = optimisticState ?? state;
+  const clockLive = displayState.clockRunning || roomClockActive;
 
   useEffect(() => {
     if (state.clockRunning) startingClockRef.current = false;
@@ -524,7 +548,7 @@ export function useUsionGame() {
       !active ||
       connection !== "ready" ||
       displayState.winner ||
-      !displayState.clockRunning
+      !clockLive
     ) {
       return;
     }
@@ -537,13 +561,13 @@ export function useUsionGame() {
   }, [
     active,
     connection,
-    displayState.clockRunning,
     displayState.winner,
+    clockLive,
     state.clockRunning,
   ]);
 
   const activeElapsed =
-    !displayState.clockRunning
+    !clockLive
       ? 0
       : Math.max(0, now - localTurnStartedAt);
   const activeRemainingMs = Math.max(
@@ -560,7 +584,7 @@ export function useUsionGame() {
       !active ||
       connection !== "ready" ||
       displayState.winner ||
-      !displayState.clockRunning ||
+      !clockLive ||
       activeRemainingMs > 0 ||
       !canAct
     ) {
@@ -579,10 +603,10 @@ export function useUsionGame() {
     commit,
     connection,
     activeRemainingMs,
-    displayState.clockRunning,
     displayState.moveCount,
     displayState.turn,
     displayState.winner,
+    clockLive,
   ]);
 
   const sendQuickMessage = useCallback(
@@ -640,6 +664,7 @@ export function useUsionGame() {
     pending,
     inviting,
     error,
+    clockRunning: clockLive,
     remainingByColor,
     quickMessage,
     commit,
