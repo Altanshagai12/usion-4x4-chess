@@ -11,7 +11,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { min-height: 100%; }
+html, body { width: 100%; min-height: 100%; overflow-x: hidden; }
 body {
   margin: 0;
   background: var(--purple-deep);
@@ -23,6 +23,8 @@ button { font: inherit; }
 
 .game-shell {
   position: relative;
+  width: 100%;
+  max-width: 100%;
   min-height: 100svh;
   overflow: hidden;
   background:
@@ -234,25 +236,19 @@ h1 strong {
 .turn-copy {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.turn-timer {
-  flex: 0 0 auto; min-width: 48px; margin-left: 1px; padding-left: 9px;
-  border-left: 1px solid rgba(255,255,255,.2); color: var(--yellow);
-  font-variant-numeric: tabular-nums; text-align: center;
-}
-.turn-timer.danger {
-  color: #ff8d93; animation: timer-pulse .75s ease-in-out infinite alternate;
-}
-@keyframes timer-pulse { to { transform: scale(1.08); } }
 .turn-dot { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.7); border-radius: 50%; }
 .turn-white { background: #fff8dd; }
 .turn-black { background: #25283a; }
 .game-stage {
   position: relative; z-index: 1; display: grid; grid-template-rows: auto minmax(280px,1fr) auto;
+  grid-template-columns: minmax(0,1fr);
   align-items: center; justify-items: center; gap: 10px; width: min(100%,620px);
+  max-width: 100%; min-width: 0;
   margin: 0 auto; padding: 4px 12px;
 }
 .reserve {
-  position: relative; width: min(96vw,500px); opacity: .66; transform: scale(.985);
+  position: relative; width: min(100%,500px); max-width: 100%; min-width: 0;
+  opacity: .66; transform: scale(.985);
   transition: opacity 180ms ease, transform 180ms ease;
 }
 .reserve-active { opacity: 1; transform: scale(1); }
@@ -262,9 +258,34 @@ h1 strong {
   font-weight: 1000; letter-spacing: .08em;
 }
 .reserve-label strong {
-  display: grid; place-items: center; min-width: 27px; min-height: 22px; padding: 2px 6px;
+  display: grid; place-items: center; min-width: 48px; min-height: 22px; padding: 2px 6px;
   border-radius: 999px; background: rgba(44,11,99,.45); color: var(--yellow);
 }
+.player-clock {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 92%; min-height: 32px; margin-inline: auto; padding: 5px 9px 5px 12px;
+  border: 2px solid rgba(255,255,255,.14); border-radius: 11px;
+  background: rgba(39,10,88,.46); color: rgba(255,255,255,.62);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+}
+.player-clock span {
+  font-size: .58rem; font-weight: 1000; letter-spacing: .1em;
+}
+.player-clock strong {
+  min-width: 66px; color: rgba(255,255,255,.72); font-size: 1.05rem;
+  font-variant-numeric: tabular-nums; letter-spacing: .04em; text-align: right;
+}
+.clock-above { margin-bottom: 5px; }
+.clock-below { margin-top: 7px; }
+.player-clock.clock-running {
+  border-color: var(--yellow); background: rgba(255,200,87,.18);
+  color: white; box-shadow: 0 3px 0 rgba(55,18,108,.42);
+}
+.player-clock.clock-running strong { color: var(--yellow); }
+.player-clock.clock-danger strong {
+  color: #ff9097; animation: clock-pulse .75s ease-in-out infinite alternate;
+}
+@keyframes clock-pulse { to { transform: scale(1.06); } }
 /* Seven across, two rows — the tray shape the real game deals. */
 .reserve-grid {
   display: grid; grid-template-columns: repeat(7,1fr); grid-auto-rows: 1fr;
@@ -286,13 +307,16 @@ h1 strong {
 .empty-slot::after {
   content: ""; width: 30%; aspect-ratio: 1; border-radius: 50%; background: rgba(91,47,118,.08);
 }
-.board-wrap { position: relative; display: grid; place-items: center; }
+.board-wrap {
+  position: relative; display: grid; place-items: center;
+  width: 100%; max-width: 100%; min-width: 0;
+}
 /* Rows must be pinned to equal fractions. With implicit rows the tall piece
    glyph grows whichever row it lands in, which visibly stretches the board the
    moment a piece is deployed. */
 .board {
   display: grid; grid-template-columns: repeat(4,1fr); grid-template-rows: repeat(4,1fr);
-  width: min(76vw,360px); aspect-ratio: 1;
+  width: min(76vw,calc(100vw - 48px),360px); max-width: 100%; aspect-ratio: 1;
   overflow: hidden; padding: 8px; border: 6px solid #4c237f; border-radius: 18px;
   background: #7ddab4; box-shadow: 0 9px 0 #3d176e, 0 17px 25px rgba(38,7,78,.28);
 }
@@ -468,6 +492,8 @@ h1 strong {
   .game-header { padding-top: 7px; }
   .game-stage { gap: 5px; }
   .reserve-label { display: none; }
+  .player-clock { min-height: 27px; padding-block: 3px; }
+  .player-clock strong { font-size: .9rem; }
   .reserve-grid { padding: 4px; border-width: 3px; }
   .board { width: min(62vh,72vw); border-width: 5px; }
   .game-footer { padding-top: 3px; padding-bottom: 7px; }
@@ -475,8 +501,7 @@ h1 strong {
 @media (max-width: 390px) {
   .game-header .icon-button { width: 43px; height: 43px; }
   .turn-pill { max-width: calc(100% - 98px); padding-inline: 10px; gap: 6px; font-size: .68rem; }
-  .turn-timer { min-width: 42px; padding-left: 6px; }
-  .board { width: min(78vw,330px); padding: 6px; }
+  .board { width: min(76vw,calc(100vw - 42px),330px); padding: 6px; }
   .move-summary { max-width: 48%; }
   .game-footer { gap: 5px; padding-inline: 10px; }
   .text-button { padding-inline: 7px; font-size: .63rem; }

@@ -24,7 +24,7 @@ const SERVICE = Object.freeze({
   description:
     "Deploy a piece from your tray or move one already on the 4×4 board. No " +
     "king, no check, no checkmate — capture every rival piece to be the last " +
-    "player standing. One-minute turns, visible move trails, and quick messages. " +
+    "player standing. Five-minute chess clocks, visible move trails, and quick messages. " +
     "Two players, two phones.",
   service_type: "game",
   cost: 0,

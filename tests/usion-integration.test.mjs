@@ -115,7 +115,7 @@ test("a hosted match is unplayable until both seats are connected", async () => 
   assert.ok(hook.indexOf("setEmbedded(true)") < hook.indexOf("while (!window.Usion"));
 });
 
-test("last moves, the one-minute clock, and preset messages are visible in-game", async () => {
+test("last moves, five-minute clocks, and preset messages are visible in-game", async () => {
   const [engine, game, hook, styles] = await Promise.all([
     readFile(new URL("app/chess-engine.ts", root), "utf8"),
     readFile(new URL("app/Game.tsx", root), "utf8"),
@@ -123,14 +123,23 @@ test("last moves, the one-minute clock, and preset messages are visible in-game"
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
 
-  // A deadline is part of ordered shared state, so both phones count down from
-  // the same turn boundary and the current player submits the timeout action.
-  assert.match(engine, /TURN_DURATION_MS = 60_000/);
-  assert.match(engine, /turnDeadline:\s*number \| null/);
+  // Both five-minute clocks are part of ordered shared state. Each move settles
+  // only the active side and starts the opponent from the same shared boundary.
+  assert.match(engine, /GAME_DURATION_MS = 5 \* 60_000/);
+  assert.match(engine, /clocks:\s*Record<Color, number>/);
+  assert.match(engine, /turnStartedAt:\s*number \| null/);
+  assert.match(engine, /wins on time/);
   assert.match(engine, /action\.type === "timeout"/);
   assert.match(hook, /\.commit\(\s*"start"/);
   assert.match(hook, /commit\("timeout", \{\}\)/);
-  assert.match(game, /className=\{`turn-timer/);
+  assert.match(game, /clockPosition="above"/);
+  assert.match(game, /clockPosition="below"/);
+  assert.match(game, /clockRunning=/);
+  assert.doesNotMatch(game, /turn-timer/);
+  assert.match(styles, /\.player-clock\.clock-running/);
+  assert.match(styles, /html, body \{ width: 100%; min-height: 100%; overflow-x: hidden;/);
+  assert.match(styles, /grid-template-columns: minmax\(0,1fr\)/);
+  assert.match(styles, /\.reserve \{[\s\S]*width: min\(100%,500px\)/);
 
   // The exact origin and destination are persisted, rendered as coordinates,
   // and highlighted independently of each player's rotated board view.

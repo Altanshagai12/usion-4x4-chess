@@ -28,7 +28,7 @@ type Selection =
 const RULES = [
   {
     title: "PUT PIECES INSIDE THE MAIN BOARD",
-    copy: "You have 60 seconds to either drop one piece from your tray onto an empty square, or move a piece already in play. A pawn can never be dropped straight onto its promotion rank.",
+    copy: "Each player has a five-minute clock. Only your clock runs on your turn, and reaching 0:00 loses the match. Drop one piece from your tray or move one already in play; a pawn cannot be dropped onto its promotion rank.",
     art: "deploy",
   },
   {
@@ -70,6 +70,11 @@ function lastMoveText(state: ChessState) {
   return state.lastAction;
 }
 
+function formatClock(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000));
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+}
+
 const TRAY_ROW = RESERVE_ORDER.length / 2;
 
 // Pawns line up in front of the back rank, as on a real board. "Front" is the
@@ -92,6 +97,9 @@ function ReserveTray({
   pieces,
   pawnsFirst,
   active,
+  clockMs,
+  clockPosition,
+  clockRunning,
   selection,
   onSelect,
 }: {
@@ -100,14 +108,28 @@ function ReserveTray({
   pieces: Piece[];
   pawnsFirst: boolean;
   active: boolean;
+  clockMs: number;
+  clockPosition: "above" | "below";
+  clockRunning: boolean;
   selection: Selection;
   onSelect: (piece: Piece) => void;
 }) {
+  const clock = (
+    <div
+      className={`player-clock clock-${clockPosition}${clockRunning ? " clock-running" : ""}${clockMs <= 30_000 ? " clock-danger" : ""}`}
+      aria-label={`${label} clock ${formatClock(clockMs)}`}
+    >
+      <span>{label}</span>
+      <strong>{formatClock(clockMs)}</strong>
+    </div>
+  );
+
   return (
     <section className={`reserve reserve-${color}${active ? " reserve-active" : ""}`} aria-label={`${color} reserve`}>
+      {clockPosition === "above" && clock}
       <div className="reserve-label">
         <span>{label}</span>
-        <strong>{pieces.length}</strong>
+        <strong>{pieces.length} PCS</strong>
       </div>
       <div className="reserve-grid">
         {traySlots(pieces, pawnsFirst).map((piece, index) => {
@@ -127,6 +149,7 @@ function ReserveTray({
           );
         })}
       </div>
+      {clockPosition === "below" && clock}
     </section>
   );
 }
@@ -406,8 +429,7 @@ export default function Game() {
   const viewIndex = (slot: number) => (flipped ? 15 - slot : slot);
   const topColor = otherColor(seatColor);
   const seated = Boolean(usion.userColor);
-  const secondsLeft = Math.ceil(usion.remainingMs / 1_000);
-  const timerText = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`;
+  const clocks = usion.active ? usion.remainingByColor : state.clocks;
   const lastMoveByOpponent = Boolean(
     state.lastMove &&
     usion.userColor &&
@@ -431,11 +453,6 @@ export default function Game() {
           <span className="turn-copy">
             {winner ? `${winner === "white" ? "WHITE" : "BLACK"} WINS` : usion.active ? `${myLabel} · ${turn.toUpperCase()}'S TURN` : myLabel}
           </span>
-          {usion.active && !winner && (
-            <strong className={`turn-timer${secondsLeft <= 10 ? " danger" : ""}`}>
-              {timerText}
-            </strong>
-          )}
         </div>
         <button className="icon-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "Mute sound" : "Turn sound on"}>
           {soundOn ? "♪" : "×"}
@@ -461,6 +478,9 @@ export default function Game() {
           pieces={reserves[topColor]}
           pawnsFirst={false}
           active={turn === topColor && canInteract}
+          clockMs={clocks[topColor]}
+          clockPosition="above"
+          clockRunning={!winner && turn === topColor && state.turnStartedAt !== null}
           selection={selection}
           onSelect={selectReserve}
         />
@@ -497,6 +517,9 @@ export default function Game() {
           pieces={reserves[seatColor]}
           pawnsFirst
           active={turn === seatColor && canInteract}
+          clockMs={clocks[seatColor]}
+          clockPosition="below"
+          clockRunning={!winner && turn === seatColor && state.turnStartedAt !== null}
           selection={selection}
           onSelect={selectReserve}
         />
@@ -557,7 +580,7 @@ export default function Game() {
           </div>
           <section className="winner-card">
             <span className={`winner-piece winner-${winner}`}>{GLYPHS.queen}</span>
-            <p>LAST MAN STANDING</p>
+            <p>{state.lastMove?.kind === "timeout" ? "TIME EXPIRED" : "LAST MAN STANDING"}</p>
             <h2>{winner === "white" ? "WHITE" : "BLACK"} WINS!</h2>
             <button className="primary-button" onClick={resetGame}>REMATCH</button>
             <button className="text-button" onClick={() => setScreen("home")}>BACK HOME</button>

@@ -12,10 +12,10 @@ export type LastMove = {
   pieceType?: PieceType;
 };
 
-export const TURN_DURATION_MS = 60_000;
+export const GAME_DURATION_MS = 5 * 60_000;
 
 export type ChessState = {
-  schemaVersion: 5;
+  schemaVersion: 6;
   board: Square[];
   reserves: Record<Color, Piece[]>;
   turn: Color;
@@ -24,7 +24,8 @@ export type ChessState = {
   moveCount: number;
   lastAction: string;
   lastMove: LastMove | null;
-  turnDeadline: number | null;
+  clocks: Record<Color, number>;
+  turnStartedAt: number | null;
 };
 
 export type ChessAction = {
@@ -88,7 +89,7 @@ function createReserve(color: Color): Piece[] {
 
 export function createInitialChessState(): ChessState {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     board: Array(16).fill(null),
     reserves: { white: createReserve("white"), black: createReserve("black") },
     turn: "white",
@@ -97,7 +98,8 @@ export function createInitialChessState(): ChessState {
     moveCount: 0,
     lastAction: "White deploys first",
     lastMove: null,
-    turnDeadline: null,
+    clocks: { white: GAME_DURATION_MS, black: GAME_DURATION_MS },
+    turnStartedAt: null,
   };
 }
 
@@ -191,9 +193,41 @@ export function hasLegalAction(state: ChessState, color: Color): boolean {
 
 const label = (color: Color) => (color === "white" ? "White" : "Black");
 
-function deadlineFrom(data: Record<string, unknown> | undefined): number | null {
-  const deadline = Number(data?.nextDeadline);
-  return Number.isFinite(deadline) && deadline > 0 ? deadline : null;
+function timestampFrom(
+  data: Record<string, unknown> | undefined,
+  key: "actedAt" | "startedAt",
+): number | null {
+  const timestamp = Number(data?.[key]);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+}
+
+function remainingAt(state: ChessState, color: Color, at: number): number {
+  if (state.turnStartedAt === null) return state.clocks[color];
+  const elapsed = Math.max(0, at - state.turnStartedAt);
+  return Math.max(0, state.clocks[color] - elapsed);
+}
+
+function loseOnTime(
+  state: ChessState,
+  color: Color,
+  at: number,
+): ChessState {
+  const winner = otherColor(color);
+  return {
+    ...state,
+    turn: winner,
+    winner,
+    clocks: { ...state.clocks, [color]: remainingAt(state, color, at) },
+    moveCount: state.moveCount + 1,
+    lastAction: `${label(winner)} wins on time!`,
+    lastMove: {
+      kind: "timeout",
+      color,
+      from: null,
+      to: null,
+    },
+    turnStartedAt: null,
+  };
 }
 
 function finish(
@@ -201,7 +235,7 @@ function finish(
   color: Color,
   action: string,
   lastMove: LastMove,
-  turnDeadline: number | null,
+  turnStartedAt: number | null,
 ): ChessState {
   const rival = otherColor(color);
   const next = {
@@ -209,7 +243,7 @@ function finish(
     turn: rival,
     moveCount: state.moveCount + 1,
     lastMove,
-    turnDeadline,
+    turnStartedAt,
   };
   const rivalAlive =
     next.board.some((piece) => piece?.color === rival) ||
@@ -223,7 +257,7 @@ function finish(
       ...next,
       winner: color,
       lastAction: `${label(color)} wins!`,
-      turnDeadline: null,
+      turnStartedAt: null,
     };
   }
   if (!hasLegalAction(next, rival)) {
@@ -231,66 +265,75 @@ function finish(
       ...next,
       winner: color,
       lastAction: `${label(rival)} has no move — ${label(color)} wins!`,
-      turnDeadline: null,
+      turnStartedAt: null,
     };
   }
   return { ...next, winner: null, lastAction: action };
 }
 
 export function reduceChess(state: ChessState, action: ChessAction): ChessState {
-  if (!state || state.schemaVersion !== 5) state = createInitialChessState();
-  const nextDeadline = deadlineFrom(action.data);
+  if (!state || state.schemaVersion !== 6) state = createInitialChessState();
+  const startedAt = timestampFrom(action.data, "startedAt");
   if (action.type === "reset" && state.winner) {
-    return { ...createInitialChessState(), turnDeadline: nextDeadline };
+    return { ...createInitialChessState(), turnStartedAt: startedAt };
   }
   const color = action.data?.color;
 
-  // Only the host/white seat starts the first shared clock. Every later
-  // deadline travels with the ordered move action that begins the next turn.
+  // Only the host/white seat starts both five-minute clocks. The active
+  // player's remaining time is settled into shared state on every move.
   if (
     action.type === "start" &&
     color === "white" &&
     !state.winner &&
-    state.turnDeadline === null &&
-    nextDeadline
+    state.turnStartedAt === null &&
+    startedAt
   ) {
-    return { ...state, turnDeadline: nextDeadline };
+    return { ...state, turnStartedAt: startedAt };
   }
 
   if ((color !== "white" && color !== "black") || color !== state.turn || state.winner) {
     return state;
   }
 
+  const suppliedAt = timestampFrom(action.data, "actedAt");
+  if (state.turnStartedAt !== null && suppliedAt === null) return state;
+  const actedAt =
+    state.turnStartedAt === null
+      ? suppliedAt
+      : Math.max(suppliedAt ?? state.turnStartedAt, state.turnStartedAt);
+  const remaining =
+    actedAt === null ? state.clocks[color] : remainingAt(state, color, actedAt);
+
   if (action.type === "timeout") {
-    return {
-      ...state,
-      turn: otherColor(color),
-      moveCount: state.moveCount + 1,
-      lastAction: `${label(color)} ran out of time`,
-      lastMove: {
-        kind: "timeout",
-        color,
-        from: null,
-        to: null,
-      },
-      turnDeadline: nextDeadline,
-    };
+    if (actedAt === null || state.turnStartedAt === null || remaining > 0) {
+      return state;
+    }
+    return loseOnTime(state, color, actedAt);
   }
+
+  if (remaining <= 0 && actedAt !== null) {
+    return loseOnTime(state, color, actedAt);
+  }
+
+  const timedState = {
+    ...state,
+    clocks: { ...state.clocks, [color]: remaining },
+  };
 
   if (action.type === "deploy") {
     const index = Number(action.data?.index);
     const pieceId = String(action.data?.pieceId ?? "");
-    const piece = state.reserves[color].find((item) => item.id === pieceId);
+    const piece = timedState.reserves[color].find((item) => item.id === pieceId);
     if (!piece) return state;
-    if (!canDeploy(state.board, color, index, piece.type)) return state;
-    const board = [...state.board];
+    if (!canDeploy(timedState.board, color, index, piece.type)) return state;
+    const board = [...timedState.board];
     board[index] = piece;
     const next = {
-      ...state,
+      ...timedState,
       board,
       reserves: {
-        ...state.reserves,
-        [color]: state.reserves[color].filter((item) => item.id !== pieceId),
+        ...timedState.reserves,
+        [color]: timedState.reserves[color].filter((item) => item.id !== pieceId),
       },
     };
     return finish(
@@ -304,7 +347,7 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
         to: index,
         pieceType: piece.type,
       },
-      nextDeadline,
+      actedAt,
     );
   }
 
@@ -312,20 +355,23 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
     const from = Number(action.data?.from);
     const to = Number(action.data?.to);
     if (!Number.isInteger(from) || !Number.isInteger(to)) return state;
-    const moving = state.board[from];
+    const moving = timedState.board[from];
     if (!moving || moving.color !== color) return state;
-    if (!getMoves(state.board, from).includes(to)) return state;
-    const board = [...state.board];
+    if (!getMoves(timedState.board, from).includes(to)) return state;
+    const board = [...timedState.board];
     const captured = board[to];
     board[from] = null;
     const promoted = moving.type === "pawn" && row(to) === promotionRow(color);
     board[to] = promoted ? { ...moving, type: "queen" } : moving;
     const next = {
-      ...state,
+      ...timedState,
       board,
       captures: captured
-        ? { ...state.captures, [color]: state.captures[color] + 1 }
-        : state.captures,
+        ? {
+            ...timedState.captures,
+            [color]: timedState.captures[color] + 1,
+          }
+        : timedState.captures,
     };
     const verb = captured
       ? `captured a ${NAMES[captured.type]}`
@@ -343,7 +389,7 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
         to,
         pieceType: promoted ? "queen" : moving.type,
       },
-      nextDeadline,
+      actedAt,
     );
   }
   return state;

@@ -5,7 +5,6 @@ import {
   ChessAction,
   ChessState,
   Color,
-  TURN_DURATION_MS,
   createInitialChessState,
   otherColor,
   reduceChess,
@@ -402,9 +401,12 @@ export function useUsionGame() {
       setPending(true);
       setError("");
       try {
+        const actionTime = Date.now();
         await shared.commit(type, {
           ...data,
-          nextDeadline: Date.now() + TURN_DURATION_MS,
+          ...(type === "reset"
+            ? { startedAt: actionTime }
+            : { actedAt: actionTime }),
         }, {
           nextTurn,
           queueOffline: true,
@@ -429,7 +431,7 @@ export function useUsionGame() {
       playerIds.length < 2 ||
       playerIds[0] !== userId ||
       state.winner ||
-      state.turnDeadline !== null ||
+      state.turnStartedAt !== null ||
       startingClockRef.current
     ) {
       return;
@@ -441,7 +443,7 @@ export function useUsionGame() {
     void shared
       .commit(
         "start",
-        { nextDeadline: Date.now() + TURN_DURATION_MS },
+        { startedAt: Date.now() },
         { nextTurn: playerIds[0], queueOffline: true },
       )
       .catch((reason) => {
@@ -454,18 +456,18 @@ export function useUsionGame() {
     active,
     connection,
     playerIds,
-    state.turnDeadline,
+    state.turnStartedAt,
     state.winner,
     userId,
   ]);
 
   useEffect(() => {
-    if (state.turnDeadline !== null) startingClockRef.current = false;
+    if (state.turnStartedAt !== null) startingClockRef.current = false;
     if (
       !active ||
       connection !== "ready" ||
       state.winner ||
-      state.turnDeadline === null
+      state.turnStartedAt === null
     ) {
       return;
     }
@@ -475,26 +477,32 @@ export function useUsionGame() {
       cancelAnimationFrame(frame);
       clearInterval(timer);
     };
-  }, [active, connection, state.turnDeadline, state.winner]);
+  }, [active, connection, state.turnStartedAt, state.winner]);
 
-  const remainingMs =
-    state.turnDeadline === null
-      ? TURN_DURATION_MS
-      : Math.max(0, state.turnDeadline - now);
+  const activeElapsed =
+    state.turnStartedAt === null ? 0 : Math.max(0, now - state.turnStartedAt);
+  const activeRemainingMs = Math.max(
+    0,
+    state.clocks[state.turn] - activeElapsed,
+  );
+  const remainingByColor: Record<Color, number> = {
+    ...state.clocks,
+    [state.turn]: activeRemainingMs,
+  };
 
   useEffect(() => {
     if (
       !active ||
       connection !== "ready" ||
       state.winner ||
-      state.turnDeadline === null ||
-      remainingMs > 0 ||
+      state.turnStartedAt === null ||
+      activeRemainingMs > 0 ||
       !canAct
     ) {
       return;
     }
 
-    const turnKey = `${state.moveCount}:${state.turnDeadline}`;
+    const turnKey = `${state.moveCount}:${state.turnStartedAt}`;
     if (timeoutTurnRef.current === turnKey) return;
     timeoutTurnRef.current = turnKey;
     void commit("timeout", {}).then((sent) => {
@@ -505,9 +513,10 @@ export function useUsionGame() {
     canAct,
     commit,
     connection,
-    remainingMs,
+    activeRemainingMs,
     state.moveCount,
-    state.turnDeadline,
+    state.turn,
+    state.turnStartedAt,
     state.winner,
   ]);
 
@@ -566,7 +575,7 @@ export function useUsionGame() {
     pending,
     inviting,
     error,
-    remainingMs,
+    remainingByColor,
     quickMessage,
     commit,
     sendQuickMessage,
