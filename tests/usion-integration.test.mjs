@@ -157,8 +157,16 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(game, /clockPosition="above"/);
   assert.match(game, /clockPosition="below"/);
   assert.match(game, /clockRunning=/);
+  assert.match(game, /--clock-progress/);
+  assert.match(game, /clockAction=/);
+  assert.match(game, /aria-label="Rules"/);
+  assert.match(game, /aria-label="Messages"/);
+  assert.doesNotMatch(game, /className="game-header"/);
+  assert.doesNotMatch(game, /className="game-footer"/);
   assert.doesNotMatch(game, /turn-timer/);
   assert.match(styles, /\.player-clock\.clock-running/);
+  assert.match(styles, /\.clock-progress \{[\s\S]*width: var\(--clock-progress\)/);
+  assert.match(styles, /\.clock-action \{/);
   assert.match(styles, /\.play-screen \{[\s\S]*height: 100svh; min-height: 0; overflow: hidden; overflow: clip;/);
   assert.match(styles, /grid-template-columns: minmax\(0,1fr\)/);
   assert.match(styles, /\.reserve \{[\s\S]*width: min\(100%,500px\)/);
@@ -176,7 +184,7 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(engine, /lastMove:\s*LastMove \| null/);
   assert.match(game, /state\.lastMove\?\.from === index/);
   assert.match(game, /state\.lastMove\?\.to === index/);
-  assert.match(game, /LAST MOVE/);
+  assert.doesNotMatch(game, /LAST MOVE/);
   assert.match(styles, /\.square\.last-from/);
   assert.match(styles, /\.square\.last-to/);
 

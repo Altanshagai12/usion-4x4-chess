@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ChessState,
   Color,
+  GAME_DURATION_MS,
   GLYPHS,
   NAMES,
   otherColor,
@@ -55,22 +56,6 @@ function PieceGlyph({ piece, small = false }: { piece: Piece; small?: boolean })
   );
 }
 
-const squareName = (index: number) =>
-  `${String.fromCharCode(65 + col(index))}${4 - row(index)}`;
-
-function lastMoveText(state: ChessState) {
-  const move = state.lastMove;
-  if (!move) return "No moves yet";
-  if (move.kind === "timeout") return `${move.color.toUpperCase()} · TIME EXPIRED`;
-  if (move.kind === "deploy" && move.to !== null) {
-    return `${move.color.toUpperCase()} · DEPLOY → ${squareName(move.to)}`;
-  }
-  if (move.from !== null && move.to !== null) {
-    return `${move.color.toUpperCase()} · ${squareName(move.from)} → ${squareName(move.to)}`;
-  }
-  return state.lastAction;
-}
-
 function formatClock(milliseconds: number) {
   const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000));
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
@@ -101,6 +86,7 @@ function ReserveTray({
   clockMs,
   clockPosition,
   clockRunning,
+  clockAction,
   selection,
   onSelect,
 }: {
@@ -112,16 +98,26 @@ function ReserveTray({
   clockMs: number;
   clockPosition: "above" | "below";
   clockRunning: boolean;
+  clockAction?: React.ReactNode;
   selection: Selection;
   onSelect: (piece: Piece) => void;
 }) {
+  const progress = Math.max(
+    0,
+    Math.min(100, (clockMs / GAME_DURATION_MS) * 100),
+  );
   const clock = (
-    <div
-      className={`player-clock clock-${clockPosition}${clockRunning ? " clock-running" : ""}${clockMs <= 30_000 ? " clock-danger" : ""}`}
-      aria-label={`${label} clock ${formatClock(clockMs)}`}
-    >
-      <span>{label}</span>
-      <strong>{formatClock(clockMs)}</strong>
+    <div className={`clock-row clock-row-${clockPosition}${clockAction ? " has-action" : ""}`}>
+      <div
+        className={`player-clock clock-${clockPosition}${clockRunning ? " clock-running" : ""}${clockMs <= 30_000 ? " clock-danger" : ""}`}
+        aria-label={`${label} clock ${formatClock(clockMs)}`}
+        style={{ "--clock-progress": `${progress}%` } as React.CSSProperties}
+      >
+        <i className="clock-progress" aria-hidden="true" />
+        <span>{label}</span>
+        <strong>{formatClock(clockMs)}</strong>
+      </div>
+      {clockAction}
     </div>
   );
 
@@ -476,10 +472,6 @@ export default function Game() {
     );
   }
 
-  const myLabel = usion.active && usion.userColor
-    ? `YOU ARE ${usion.userColor.toUpperCase()}`
-    : `${turn === "white" ? "PLAYER 1" : "PLAYER 2"}'S TURN`;
-
   // Each player looks at the board from their own side: your army sits on the
   // bottom rank and your tray under it, exactly as it does for the other
   // player on their phone. Black therefore views the board rotated 180°.
@@ -516,19 +508,6 @@ export default function Game() {
         onInvite={() => void usion.invite()}
         recover={usion.recover}
       />
-      <header className="game-header">
-        <button className="icon-button" onClick={() => setScreen("home")} aria-label="Home">⌂</button>
-        <div className="turn-pill" aria-live="polite">
-          <span className={`turn-dot turn-${turn}`} />
-          <span className="turn-copy">
-            {winner ? `${winner === "white" ? "WHITE" : "BLACK"} WINS` : usion.active ? `${myLabel} · ${turn.toUpperCase()}'S TURN` : myLabel}
-          </span>
-        </div>
-        <button className="icon-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "Mute sound" : "Turn sound on"}>
-          {soundOn ? "♪" : "×"}
-        </button>
-      </header>
-
       {usion.quickMessage && (
         <div
           className={`quick-message-toast message-${usion.quickMessage.from}`}
@@ -551,6 +530,15 @@ export default function Game() {
           clockMs={clocks[topColor]}
           clockPosition="above"
           clockRunning={!winner && turn === topColor && (usion.active ? usion.clockRunning : state.clockRunning)}
+          clockAction={(
+            <button
+              className="clock-action rules-clock-action"
+              onClick={() => setScreen("rules")}
+              aria-label="Rules"
+            >
+              ?
+            </button>
+          )}
           selection={selection}
           onSelect={selectReserve}
         />
@@ -590,31 +578,21 @@ export default function Game() {
           clockMs={clocks[seatColor]}
           clockPosition="below"
           clockRunning={!winner && turn === seatColor && (usion.active ? usion.clockRunning : state.clockRunning)}
+          clockAction={usion.active ? (
+            <button
+              className="clock-action message-clock-action"
+              onClick={() => setChatOpen((open) => !open)}
+              aria-label="Messages"
+              aria-expanded={chatOpen}
+              aria-controls="quick-message-panel"
+            >
+              <span className="chat-bubble-icon" aria-hidden="true" />
+            </button>
+          ) : undefined}
           selection={selection}
           onSelect={selectReserve}
         />
       </div>
-
-      <footer className="game-footer">
-        <div className="move-summary" aria-live="polite">
-          <small>{usion.pending ? "SENDING MOVE…" : "LAST MOVE"}</small>
-          <strong>{usion.pending ? state.lastAction : lastMoveText(state)}</strong>
-        </div>
-        <div className="footer-actions">
-          {usion.active && (
-            <button
-              className="text-button message-button"
-              onClick={() => setChatOpen((open) => !open)}
-              aria-expanded={chatOpen}
-              aria-controls="quick-message-panel"
-            >
-              MESSAGE
-            </button>
-          )}
-          <button className="text-button" onClick={() => setScreen("rules")}>RULES</button>
-          {!usion.active && <button className="text-button" onClick={resetGame}>RESTART</button>}
-        </div>
-      </footer>
 
       {usion.active && chatOpen && (
         <aside

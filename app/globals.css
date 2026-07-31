@@ -188,7 +188,7 @@ h1 strong {
 }
 
 .play-screen {
-  display: grid; grid-template-rows: auto minmax(0,1fr) auto;
+  display: grid; grid-template-rows: minmax(0,1fr);
   height: 100svh; min-height: 0; overflow: hidden; overflow: clip;
 }
 .connection-notice {
@@ -226,22 +226,6 @@ h1 strong {
 .connection-failed .connection-spinner { border: 0; background: #ff6f77; animation: none; }
 @keyframes connection-spin { to { transform: rotate(360deg); } }
 @keyframes connection-pulse { 50% { opacity: .35; transform: scale(.72); } }
-.game-header {
-  position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between;
-  width: min(100%,620px); margin: 0 auto; padding: 12px 14px 6px;
-}
-.turn-pill {
-  display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 9px 17px;
-  border-radius: 999px; background: rgba(49,14,108,.5);
-  box-shadow: inset 0 0 0 2px rgba(255,255,255,.12);
-  font-size: .82rem; font-weight: 1000; letter-spacing: .04em;
-}
-.turn-copy {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.turn-dot { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.7); border-radius: 50%; }
-.turn-white { background: #fff8dd; }
-.turn-black { background: #25283a; }
 .game-stage {
   position: relative; z-index: 1; display: grid; grid-template-rows: auto minmax(0,1fr) auto;
   grid-template-columns: minmax(0,1fr);
@@ -264,31 +248,67 @@ h1 strong {
   display: grid; place-items: center; min-width: 48px; min-height: 22px; padding: 2px 6px;
   border-radius: 999px; background: rgba(44,11,99,.45); color: var(--yellow);
 }
+.clock-row {
+  display: grid; grid-template-columns: minmax(0,1fr); align-items: center;
+  width: 92%; margin-inline: auto;
+}
+.clock-row.has-action {
+  grid-template-columns: minmax(0,1fr) 36px;
+  gap: 8px; width: 100%;
+}
+.clock-row-above { margin-bottom: 5px; }
+.clock-row-below { margin-top: 7px; }
 .player-clock {
+  position: relative; isolation: isolate; overflow: hidden;
   display: flex; align-items: center; justify-content: space-between;
-  width: 92%; min-height: 32px; margin-inline: auto; padding: 5px 9px 5px 12px;
-  border: 2px solid rgba(255,255,255,.14); border-radius: 11px;
-  background: rgba(39,10,88,.46); color: rgba(255,255,255,.62);
+  width: 100%; min-height: 32px; padding: 5px 9px 5px 12px;
+  border: 2px solid rgba(255,255,255,.2); border-radius: 11px;
+  background: rgba(39,10,88,.68); color: white;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
 }
+.clock-progress {
+  position: absolute; z-index: -1; inset: 0 auto 0 0;
+  width: var(--clock-progress);
+  background: linear-gradient(90deg,#f2a928 0%,var(--yellow) 100%);
+  box-shadow: inset -3px 0 0 rgba(255,255,255,.34);
+  transition: width .25s linear;
+}
 .player-clock span {
+  position: relative; z-index: 1;
   font-size: .58rem; font-weight: 1000; letter-spacing: .1em;
+  text-shadow: 0 1px 2px rgba(40,9,80,.7);
 }
 .player-clock strong {
-  min-width: 66px; color: rgba(255,255,255,.72); font-size: 1.05rem;
+  position: relative; z-index: 1; min-width: 66px;
+  color: white; font-size: 1.05rem;
   font-variant-numeric: tabular-nums; letter-spacing: .04em; text-align: right;
+  text-shadow: 0 2px 2px rgba(40,9,80,.72);
 }
-.clock-above { margin-bottom: 5px; }
-.clock-below { margin-top: 7px; }
 .player-clock.clock-running {
-  border-color: var(--yellow); background: rgba(255,200,87,.18);
-  color: white; box-shadow: 0 3px 0 rgba(55,18,108,.42);
+  border-color: #ffe39c; box-shadow: 0 3px 0 rgba(55,18,108,.42), 0 0 12px rgba(255,200,87,.24);
 }
-.player-clock.clock-running strong { color: var(--yellow); }
 .player-clock.clock-danger strong {
   color: #ff9097; animation: clock-pulse .75s ease-in-out infinite alternate;
 }
 @keyframes clock-pulse { to { transform: scale(1.06); } }
+.clock-action {
+  position: relative; display: grid; place-items: center;
+  width: 36px; height: 36px; padding: 0;
+  cursor: pointer; border: 2px solid rgba(255,255,255,.32); border-radius: 11px;
+  background: rgba(47,13,104,.62); color: var(--yellow);
+  box-shadow: 0 3px 0 rgba(55,18,108,.45);
+  font-size: 1.08rem; font-weight: 1000;
+}
+.clock-action:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(55,18,108,.45); }
+.chat-bubble-icon {
+  position: relative; display: block; width: 17px; height: 13px;
+  border: 2px solid currentColor; border-radius: 5px;
+}
+.chat-bubble-icon::after {
+  content: ""; position: absolute; left: 2px; bottom: -5px;
+  width: 5px; height: 5px;
+  border-left: 2px solid currentColor; transform: skewY(-35deg);
+}
 /* Seven across, two rows — the tray shape the real game deals. */
 .reserve-grid {
   display: grid; grid-template-columns: repeat(7,1fr); grid-auto-rows: 1fr;
@@ -388,28 +408,9 @@ h1 strong {
 }
 .capture-score-black { top: 10px; right: -7px; }
 .capture-score-white { bottom: 5px; left: -7px; }
-.game-footer {
-  position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; width: min(100%,620px); margin: 0 auto; padding: 8px 16px 13px;
-}
-.move-summary {
-  display: grid; min-width: 0; max-width: 58%; gap: 1px;
-}
-.move-summary small {
-  color: rgba(255,255,255,.48); font-size: .56rem; font-weight: 1000;
-  letter-spacing: .12em;
-}
-.move-summary strong {
-  overflow: hidden; color: rgba(255,255,255,.9); font-size: .72rem;
-  font-weight: 900; text-overflow: ellipsis; white-space: nowrap;
-}
-.footer-actions { display: flex; gap: 5px; }
 .text-button {
   padding: 8px 10px; border-radius: 9px; background: transparent;
   color: rgba(255,255,255,.75); font-size: .7rem; letter-spacing: .06em;
-}
-.message-button {
-  background: rgba(255,222,92,.14); color: var(--yellow);
 }
 .quick-message-toast {
   position: fixed; z-index: 12; top: max(68px, calc(env(safe-area-inset-top) + 56px));
@@ -429,7 +430,7 @@ h1 strong {
 }
 .quick-message-panel {
   position: fixed; z-index: 14; right: max(14px, env(safe-area-inset-right));
-  bottom: max(62px, calc(env(safe-area-inset-bottom) + 54px));
+  bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px));
   width: min(360px, calc(100% - 28px)); padding: 14px;
   border: 3px solid rgba(255,255,255,.2); border-radius: 20px;
   background: linear-gradient(160deg,rgba(92,38,187,.98),rgba(57,17,119,.98));
@@ -492,11 +493,7 @@ h1 strong {
   .board { width: min(49vh,390px); }
 }
 @media (max-width: 390px) {
-  .game-header .icon-button { width: 43px; height: 43px; }
-  .turn-pill { max-width: calc(100% - 98px); padding-inline: 10px; gap: 6px; font-size: .68rem; }
   .board { width: min(76vw,calc(100vw - 42px),330px); padding: 6px; }
-  .move-summary { max-width: 48%; }
-  .game-footer { gap: 5px; padding-inline: 10px; }
   .text-button { padding-inline: 7px; font-size: .63rem; }
 }
 /* Usions' own call header leaves the game roughly 720 CSS pixels high on a
@@ -504,9 +501,6 @@ h1 strong {
    no element can spill into its neighbour. Keep this after the width query:
    short screens must win over narrow-screen sizing. */
 @media (max-height: 900px) {
-  .game-header { padding: 4px 12px 2px; }
-  .game-header .icon-button { width: 40px; height: 40px; }
-  .turn-pill { min-height: 36px; padding-block: 6px; }
   .game-stage { gap: 3px; padding-block: 1px; }
   .reserve { width: min(90vw,380px); }
   .reserve-label { display: none; }
@@ -514,17 +508,14 @@ h1 strong {
   .player-clock strong { font-size: .9rem; }
   .reserve-grid { padding: 4px; border-width: 3px; }
   .board { width: min(40svh,70vw,300px); padding: 6px; border-width: 5px; }
-  .game-footer { padding-top: 2px; padding-bottom: 4px; }
 }
 @media (max-height: 620px) {
-  .game-header { padding-top: 2px; }
   .game-stage { gap: 1px; }
   .reserve { width: min(82vw,340px); }
   .player-clock { min-height: 23px; padding-block: 1px; }
-  .clock-above { margin-bottom: 2px; }
-  .clock-below { margin-top: 3px; }
+  .clock-row-above { margin-bottom: 2px; }
+  .clock-row-below { margin-top: 3px; }
   .board { width: min(36svh,66vw,250px); padding: 5px; }
-  .game-footer { padding-block: 1px 3px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
