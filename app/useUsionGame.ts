@@ -142,6 +142,10 @@ function addCleanup(
   if (cleanup) cleanups.push(cleanup);
 }
 
+function compatibleState(state: ChessState): ChessState {
+  return state?.schemaVersion === 6 ? state : createInitialChessState();
+}
+
 export function useUsionGame() {
   const [state, setState] = useState<ChessState>(() => createInitialChessState());
   const [active, setActive] = useState(false);
@@ -266,8 +270,11 @@ export function useUsionGame() {
           authority: "host",
         });
         sharedRef.current = shared;
-        addCleanup(cleanups, shared.onChange((next) => setState(next)));
-        setState(shared.get());
+        addCleanup(
+          cleanups,
+          shared.onChange((next) => setState(compatibleState(next))),
+        );
+        setState(compatibleState(shared.get()));
 
         const enterRoom = async (roomId: string) => {
           try {
@@ -340,7 +347,7 @@ export function useUsionGame() {
           }
         }));
         addCleanup(cleanups, usion.game.onReconnected((event) => {
-          if (event.state) setState(event.state);
+          if (event.state) setState(compatibleState(event.state));
           applySeatState(playerIdsRef.current);
         }));
         addCleanup(cleanups, usion.game.onError((event) => {

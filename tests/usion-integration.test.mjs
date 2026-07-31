@@ -132,6 +132,7 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(engine, /action\.type === "timeout"/);
   assert.match(hook, /\.commit\(\s*"start"/);
   assert.match(hook, /commit\("timeout", \{\}\)/);
+  assert.match(hook, /state\?\.schemaVersion === 6/);
   assert.match(game, /clockPosition="above"/);
   assert.match(game, /clockPosition="below"/);
   assert.match(game, /clockRunning=/);
