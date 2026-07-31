@@ -19,6 +19,7 @@ const registryEntry = {
   name: SERVICE.name,
   iframe_url: "https://usion-4x4-chess.example.com/",
   multiplayer: { profile: "state", maxPlayers: 2 },
+  realtime: null,
   game_config: { room_mode: "match", max_players: 2, min_players: 2 },
 };
 
@@ -60,7 +61,8 @@ test("the payload keeps the match on the platform relay", () => {
   assert.equal(payload.service_type, "game");
   assert.equal(payload.cost, 0);
   assert.deepEqual(payload.multiplayer, { profile: "state", maxPlayers: 2 });
-  // A `realtime` block would move the game to direct mode and break syncedState.
+  // The registry derives the platform relay from this profile; direct transport
+  // settings never belong in the publisher payload.
   assert.equal(payload.realtime, undefined);
   assert.equal(payload.leaderboard, undefined);
   assert.ok(payload.tags.includes("game"));

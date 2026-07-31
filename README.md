@@ -78,10 +78,10 @@ Redeploy later with `railway up -y -c --service usion-4x4-chess`.
 
 | | |
 | --- | --- |
-| URL | https://usion-4x4-chess-production.up.railway.app/ |
-| Host | Railway — `usion-4x4-chess` project/service, `npm start`, healthcheck `/` |
+| URL | https://usion-4x4-chess.soninangilug.chatgpt.site/ |
+| Host | OpenAI Sites — project configured in `.openai/hosting.json` |
 | Usion service id | `4-4-chess-last-man-stand-891b95f2` (`service_type: game`, published) |
-| Transport | `multiplayer.profile: state` — platform relay, `realtime: null`, 2 seats |
+| Transport | `multiplayer.profile: state` — platform WebSocket relay, 2 seats |
 | SDK | v2 / protocol 2, matching `https://usions.com/usion-sdk.js` |
 | Leaderboard | none — chess produces a winner, not a score |
 

@@ -15,17 +15,17 @@ const REQUEST_TIMEOUT_MS = 20_000;
 
 // `multiplayer.profile: "state"` is the load-bearing field. It pins the match
 // to the platform relay, which is the transport `Usion.game.syncedState` needs.
-// Registering the same tags WITHOUT it makes the registry treat this as a
-// direct-mode game and auto-derive `realtime.ws_url` as wss://<iframe host> —
-// a game server this repository never deploys, so every room would fail to
-// connect. The profile also pins max/min players at 2 for the seat assignment
-// in `app/useUsionGame.ts` (seat one white, seat two black).
+// Creator API entries may leave `realtime` null or materialize the relay as
+// connection_mode = "platform". Direct mode or a non-null ws_url would
+// incorrectly send clients to a game server this repository does not deploy.
+// The profile also pins max/min players at 2 for the seat assignment.
 const SERVICE = Object.freeze({
   name: "4×4 Chess: Last Man Stand",
   description:
     "Deploy a piece from your tray or move one already on the 4×4 board. No " +
     "king, no check, no checkmate — capture every rival piece to be the last " +
-    "player standing. Two players, two phones.",
+    "player standing. One-minute turns, visible move trails, and quick messages. " +
+    "Two players, two phones.",
   service_type: "game",
   cost: 0,
   tags: Object.freeze([
@@ -135,9 +135,17 @@ function assertPublished(entry, payload) {
       `Registry multiplayer profile is ${entry.multiplayer?.profile ?? "missing"}, expected state.`,
     );
   }
-  if (entry.realtime) {
+  const realtime = entry.realtime;
+  if (
+    realtime &&
+    (
+      realtime.connection_mode !== "platform" ||
+      realtime.connection_transport !== "websocket" ||
+      realtime.ws_url
+    )
+  ) {
     throw new Error(
-      "Registry attached a realtime transport; syncedState needs the platform relay.",
+      "Registry realtime transport is not the platform WebSocket relay.",
     );
   }
   const seats = entry.game_config ?? {};
