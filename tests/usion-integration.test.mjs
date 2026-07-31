@@ -149,6 +149,14 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(styles, /\.play-screen \{[\s\S]*height: 100svh; min-height: 0; overflow: hidden;/);
   assert.match(styles, /grid-template-columns: minmax\(0,1fr\)/);
   assert.match(styles, /\.reserve \{[\s\S]*width: min\(100%,500px\)/);
+  assert.match(styles, /\.board-wrap \{[\s\S]*height: 100%;[\s\S]*min-height: 0;/);
+  assert.match(styles, /\.board \{[\s\S]*max-height: 100%;[\s\S]*aspect-ratio: 1;/);
+  assert.match(styles, /@media \(max-height: 900px\)[\s\S]*\.reserve-label \{ display: none; \}/);
+  assert.ok(
+    styles.indexOf("@media (max-width: 390px)") <
+      styles.indexOf("@media (max-height: 900px)"),
+    "short-screen rules must override narrow-screen board sizing",
+  );
 
   // The exact origin and destination are persisted, rendered as coordinates,
   // and highlighted independently of each player's rotated board view.
