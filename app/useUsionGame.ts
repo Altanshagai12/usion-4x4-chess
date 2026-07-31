@@ -143,11 +143,12 @@ function addCleanup(
 }
 
 function compatibleState(state: ChessState): ChessState {
-  return state?.schemaVersion === 6 ? state : createInitialChessState();
+  return state?.schemaVersion === 7 ? state : createInitialChessState();
 }
 
 export function useUsionGame() {
   const [state, setState] = useState<ChessState>(() => createInitialChessState());
+  const [optimisticState, setOptimisticState] = useState<ChessState | null>(null);
   const [active, setActive] = useState(false);
   const [embedded, setEmbedded] = useState(false);
   const [started, setStarted] = useState(false);
@@ -159,6 +160,7 @@ export function useUsionGame() {
   const [error, setError] = useState("");
   const [quickMessage, setQuickMessage] = useState<QuickMessage | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [localTurnStartedAt, setLocalTurnStartedAt] = useState(0);
   const sharedRef = useRef<SharedState | null>(null);
   const playerIdsRef = useRef<string[]>([]);
   const inviteRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -166,6 +168,36 @@ export function useUsionGame() {
   const quickMessageCooldownRef = useRef(0);
   const startingClockRef = useRef(false);
   const timeoutTurnRef = useRef("");
+  const optimisticStateKeyRef = useRef<string | null>(null);
+  const turnAnchorKeyRef = useRef("");
+
+  const stateKey = useCallback(
+    (next: ChessState) =>
+      `${next.schemaVersion}:${next.moveCount}:${next.turn}:${next.clockRunning}`,
+    [],
+  );
+
+  const acceptSharedState = useCallback(
+    (incoming: ChessState) => {
+      const next = compatibleState(incoming);
+      const key = stateKey(next);
+      const optimisticKey = optimisticStateKeyRef.current;
+      if (optimisticKey && key !== optimisticKey) {
+        setState(next);
+        return;
+      }
+      if (turnAnchorKeyRef.current !== key) {
+        turnAnchorKeyRef.current = key;
+        setLocalTurnStartedAt(Date.now());
+      }
+      setState(next);
+      if (optimisticKey === key) {
+        optimisticStateKeyRef.current = null;
+        setOptimisticState(null);
+      }
+    },
+    [stateKey],
+  );
 
   const showQuickMessage = useCallback(
     (message: (typeof QUICK_MESSAGES)[number], from: QuickMessage["from"]) => {
@@ -272,9 +304,9 @@ export function useUsionGame() {
         sharedRef.current = shared;
         addCleanup(
           cleanups,
-          shared.onChange((next) => setState(compatibleState(next))),
+          shared.onChange(acceptSharedState),
         );
-        setState(compatibleState(shared.get()));
+        acceptSharedState(shared.get());
 
         const enterRoom = async (roomId: string) => {
           try {
@@ -347,7 +379,7 @@ export function useUsionGame() {
           }
         }));
         addCleanup(cleanups, usion.game.onReconnected((event) => {
-          if (event.state) setState(compatibleState(event.state));
+          if (event.state) acceptSharedState(event.state);
           applySeatState(playerIdsRef.current);
         }));
         addCleanup(cleanups, usion.game.onError((event) => {
@@ -386,7 +418,7 @@ export function useUsionGame() {
       sharedRef.current?.destroy();
       sharedRef.current = null;
     };
-  }, [applySeatState, showQuickMessage, updateRoster]);
+  }, [acceptSharedState, applySeatState, showQuickMessage, updateRoster]);
 
   const seatIndex = playerIds.indexOf(userId);
   const userColor: Color | null =
@@ -407,19 +439,35 @@ export function useUsionGame() {
 
       setPending(true);
       setError("");
+      const actionTime = Date.now();
+      const previousAnchorKey = turnAnchorKeyRef.current;
+      const previousLocalTurnStartedAt = localTurnStartedAt;
+      const elapsedMs = state.clockRunning
+        ? Math.max(0, actionTime - localTurnStartedAt)
+        : 0;
+      const actionData = { ...data, elapsedMs };
+      const preview = reduceChess(state, {
+        type,
+        data: { ...actionData, color: userColor },
+      });
+      if (preview !== state) {
+        optimisticStateKeyRef.current = stateKey(preview);
+        turnAnchorKeyRef.current = stateKey(preview);
+        setLocalTurnStartedAt(actionTime);
+        setOptimisticState(preview);
+        setNow(actionTime);
+      }
       try {
-        const actionTime = Date.now();
-        await shared.commit(type, {
-          ...data,
-          ...(type === "reset"
-            ? { startedAt: actionTime }
-            : { actedAt: actionTime }),
-        }, {
+        await shared.commit(type, actionData, {
           nextTurn,
           queueOffline: true,
         });
         return true;
       } catch (reason) {
+        optimisticStateKeyRef.current = null;
+        turnAnchorKeyRef.current = previousAnchorKey;
+        setLocalTurnStartedAt(previousLocalTurnStartedAt);
+        setOptimisticState(null);
         setError(
           reason instanceof Error ? reason.message : "Move was not sent",
         );
@@ -428,7 +476,7 @@ export function useUsionGame() {
         setPending(false);
       }
     },
-    [canAct, playerIds, userColor],
+    [canAct, localTurnStartedAt, playerIds, state, stateKey, userColor],
   );
 
   useEffect(() => {
@@ -438,7 +486,7 @@ export function useUsionGame() {
       playerIds.length < 2 ||
       playerIds[0] !== userId ||
       state.winner ||
-      state.turnStartedAt !== null ||
+      state.clockRunning ||
       startingClockRef.current
     ) {
       return;
@@ -450,7 +498,7 @@ export function useUsionGame() {
     void shared
       .commit(
         "start",
-        { startedAt: Date.now() },
+        {},
         { nextTurn: playerIds[0], queueOffline: true },
       )
       .catch((reason) => {
@@ -463,18 +511,20 @@ export function useUsionGame() {
     active,
     connection,
     playerIds,
-    state.turnStartedAt,
+    state.clockRunning,
     state.winner,
     userId,
   ]);
 
+  const displayState = optimisticState ?? state;
+
   useEffect(() => {
-    if (state.turnStartedAt !== null) startingClockRef.current = false;
+    if (state.clockRunning) startingClockRef.current = false;
     if (
       !active ||
       connection !== "ready" ||
-      state.winner ||
-      state.turnStartedAt === null
+      displayState.winner ||
+      !displayState.clockRunning
     ) {
       return;
     }
@@ -484,32 +534,40 @@ export function useUsionGame() {
       cancelAnimationFrame(frame);
       clearInterval(timer);
     };
-  }, [active, connection, state.turnStartedAt, state.winner]);
+  }, [
+    active,
+    connection,
+    displayState.clockRunning,
+    displayState.winner,
+    state.clockRunning,
+  ]);
 
   const activeElapsed =
-    state.turnStartedAt === null ? 0 : Math.max(0, now - state.turnStartedAt);
+    !displayState.clockRunning
+      ? 0
+      : Math.max(0, now - localTurnStartedAt);
   const activeRemainingMs = Math.max(
     0,
-    state.clocks[state.turn] - activeElapsed,
+    displayState.clocks[displayState.turn] - activeElapsed,
   );
   const remainingByColor: Record<Color, number> = {
-    ...state.clocks,
-    [state.turn]: activeRemainingMs,
+    ...displayState.clocks,
+    [displayState.turn]: activeRemainingMs,
   };
 
   useEffect(() => {
     if (
       !active ||
       connection !== "ready" ||
-      state.winner ||
-      state.turnStartedAt === null ||
+      displayState.winner ||
+      !displayState.clockRunning ||
       activeRemainingMs > 0 ||
       !canAct
     ) {
       return;
     }
 
-    const turnKey = `${state.moveCount}:${state.turnStartedAt}`;
+    const turnKey = `${displayState.moveCount}:${displayState.turn}`;
     if (timeoutTurnRef.current === turnKey) return;
     timeoutTurnRef.current = turnKey;
     void commit("timeout", {}).then((sent) => {
@@ -521,10 +579,10 @@ export function useUsionGame() {
     commit,
     connection,
     activeRemainingMs,
-    state.moveCount,
-    state.turn,
-    state.turnStartedAt,
-    state.winner,
+    displayState.clockRunning,
+    displayState.moveCount,
+    displayState.turn,
+    displayState.winner,
   ]);
 
   const sendQuickMessage = useCallback(
@@ -574,7 +632,7 @@ export function useUsionGame() {
     active,
     embedded,
     started,
-    state,
+    state: displayState,
     connection,
     playerIds,
     userColor,

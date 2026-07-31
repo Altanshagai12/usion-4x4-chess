@@ -187,7 +187,10 @@ h1 strong {
   box-shadow: 0 4px 0 rgba(43,11,100,.45); font-size: 1.5rem;
 }
 
-.play-screen { display: grid; grid-template-rows: auto 1fr auto; min-height: 100svh; }
+.play-screen {
+  display: grid; grid-template-rows: auto minmax(0,1fr) auto;
+  height: 100svh; min-height: 0; overflow: hidden;
+}
 .connection-notice {
   position: fixed;
   z-index: 15;
@@ -240,10 +243,10 @@ h1 strong {
 .turn-white { background: #fff8dd; }
 .turn-black { background: #25283a; }
 .game-stage {
-  position: relative; z-index: 1; display: grid; grid-template-rows: auto minmax(280px,1fr) auto;
+  position: relative; z-index: 1; display: grid; grid-template-rows: auto minmax(0,1fr) auto;
   grid-template-columns: minmax(0,1fr);
   align-items: center; justify-items: center; gap: 10px; width: min(100%,620px);
-  max-width: 100%; min-width: 0;
+  height: 100%; max-width: 100%; min-width: 0; min-height: 0; overflow: hidden;
   margin: 0 auto; padding: 4px 12px;
 }
 .reserve {
@@ -489,14 +492,27 @@ h1 strong {
   .board { width: min(49vh,390px); }
 }
 @media (max-height: 720px) {
-  .game-header { padding-top: 7px; }
-  .game-stage { gap: 5px; }
+  .game-header { padding: 4px 12px 2px; }
+  .game-header .icon-button { width: 40px; height: 40px; }
+  .turn-pill { min-height: 36px; padding-block: 6px; }
+  .game-stage { gap: 3px; padding-block: 1px; }
+  .reserve { width: min(90vw,380px); }
   .reserve-label { display: none; }
-  .player-clock { min-height: 27px; padding-block: 3px; }
+  .player-clock { min-height: 26px; padding-block: 2px; }
   .player-clock strong { font-size: .9rem; }
   .reserve-grid { padding: 4px; border-width: 3px; }
-  .board { width: min(62vh,72vw); border-width: 5px; }
-  .game-footer { padding-top: 3px; padding-bottom: 7px; }
+  .board { width: min(40svh,70vw,300px); padding: 6px; border-width: 5px; }
+  .game-footer { padding-top: 2px; padding-bottom: 4px; }
+}
+@media (max-height: 620px) {
+  .game-header { padding-top: 2px; }
+  .game-stage { gap: 1px; }
+  .reserve { width: min(82vw,340px); }
+  .player-clock { min-height: 23px; padding-block: 1px; }
+  .clock-above { margin-bottom: 2px; }
+  .clock-below { margin-top: 3px; }
+  .board { width: min(36svh,66vw,250px); padding: 5px; }
+  .game-footer { padding-block: 1px 3px; }
 }
 @media (max-width: 390px) {
   .game-header .icon-button { width: 43px; height: 43px; }

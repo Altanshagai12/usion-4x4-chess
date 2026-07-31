@@ -480,7 +480,7 @@ export default function Game() {
           active={turn === topColor && canInteract}
           clockMs={clocks[topColor]}
           clockPosition="above"
-          clockRunning={!winner && turn === topColor && state.turnStartedAt !== null}
+          clockRunning={!winner && turn === topColor && state.clockRunning}
           selection={selection}
           onSelect={selectReserve}
         />
@@ -519,7 +519,7 @@ export default function Game() {
           active={turn === seatColor && canInteract}
           clockMs={clocks[seatColor]}
           clockPosition="below"
-          clockRunning={!winner && turn === seatColor && state.turnStartedAt !== null}
+          clockRunning={!winner && turn === seatColor && state.clockRunning}
           selection={selection}
           onSelect={selectReserve}
         />

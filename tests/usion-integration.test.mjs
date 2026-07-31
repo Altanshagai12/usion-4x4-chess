@@ -28,10 +28,15 @@ test("uses the public Usion SDK and reconnect-safe ordered state", async () => {
   assert.doesNotMatch(hook, /game\.emit|Usion\.ready|user\.info/);
 });
 
-test("online actions wait for the shared-state echo", async () => {
-  const game = await readFile(new URL("app/Game.tsx", root), "utf8");
+test("online actions render optimistically before the shared-state echo", async () => {
+  const [game, hook] = await Promise.all([
+    readFile(new URL("app/Game.tsx", root), "utf8"),
+    readFile(new URL("app/useUsionGame.ts", root), "utf8"),
+  ]);
   assert.match(game, /if \(usion\.active\) \{\s*await usion\.commit/);
   assert.match(game, /const state = usion\.active \? usion\.state : localState/);
+  assert.match(hook, /setOptimisticState\(preview\)/);
+  assert.match(hook, /state:\s*displayState/);
 });
 
 test("a second player arrives through the platform invite, never self-play", async () => {
@@ -127,18 +132,21 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   // only the active side and starts the opponent from the same shared boundary.
   assert.match(engine, /GAME_DURATION_MS = 5 \* 60_000/);
   assert.match(engine, /clocks:\s*Record<Color, number>/);
-  assert.match(engine, /turnStartedAt:\s*number \| null/);
+  assert.match(engine, /clockRunning:\s*boolean/);
+  assert.match(engine, /elapsedMs/);
   assert.match(engine, /wins on time/);
   assert.match(engine, /action\.type === "timeout"/);
   assert.match(hook, /\.commit\(\s*"start"/);
   assert.match(hook, /commit\("timeout", \{\}\)/);
-  assert.match(hook, /state\?\.schemaVersion === 6/);
+  assert.match(hook, /state\?\.schemaVersion === 7/);
+  assert.match(hook, /localTurnStartedAt/);
+  assert.doesNotMatch(hook, /actedAt|startedAt:\s*actionTime/);
   assert.match(game, /clockPosition="above"/);
   assert.match(game, /clockPosition="below"/);
   assert.match(game, /clockRunning=/);
   assert.doesNotMatch(game, /turn-timer/);
   assert.match(styles, /\.player-clock\.clock-running/);
-  assert.match(styles, /html, body \{ width: 100%; min-height: 100%; overflow-x: hidden;/);
+  assert.match(styles, /\.play-screen \{[\s\S]*height: 100svh; min-height: 0; overflow: hidden;/);
   assert.match(styles, /grid-template-columns: minmax\(0,1fr\)/);
   assert.match(styles, /\.reserve \{[\s\S]*width: min\(100%,500px\)/);
 

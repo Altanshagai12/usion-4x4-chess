@@ -15,7 +15,7 @@ export type LastMove = {
 export const GAME_DURATION_MS = 5 * 60_000;
 
 export type ChessState = {
-  schemaVersion: 6;
+  schemaVersion: 7;
   board: Square[];
   reserves: Record<Color, Piece[]>;
   turn: Color;
@@ -25,7 +25,7 @@ export type ChessState = {
   lastAction: string;
   lastMove: LastMove | null;
   clocks: Record<Color, number>;
-  turnStartedAt: number | null;
+  clockRunning: boolean;
 };
 
 export type ChessAction = {
@@ -89,7 +89,7 @@ function createReserve(color: Color): Piece[] {
 
 export function createInitialChessState(): ChessState {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     board: Array(16).fill(null),
     reserves: { white: createReserve("white"), black: createReserve("black") },
     turn: "white",
@@ -99,7 +99,7 @@ export function createInitialChessState(): ChessState {
     lastAction: "White deploys first",
     lastMove: null,
     clocks: { white: GAME_DURATION_MS, black: GAME_DURATION_MS },
-    turnStartedAt: null,
+    clockRunning: false,
   };
 }
 
@@ -193,31 +193,21 @@ export function hasLegalAction(state: ChessState, color: Color): boolean {
 
 const label = (color: Color) => (color === "white" ? "White" : "Black");
 
-function timestampFrom(
-  data: Record<string, unknown> | undefined,
-  key: "actedAt" | "startedAt",
-): number | null {
-  const timestamp = Number(data?.[key]);
-  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
-}
-
-function remainingAt(state: ChessState, color: Color, at: number): number {
-  if (state.turnStartedAt === null) return state.clocks[color];
-  const elapsed = Math.max(0, at - state.turnStartedAt);
-  return Math.max(0, state.clocks[color] - elapsed);
+function elapsedFrom(data: Record<string, unknown> | undefined): number | null {
+  const elapsed = Number(data?.elapsedMs);
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
 }
 
 function loseOnTime(
   state: ChessState,
   color: Color,
-  at: number,
 ): ChessState {
   const winner = otherColor(color);
   return {
     ...state,
     turn: winner,
     winner,
-    clocks: { ...state.clocks, [color]: remainingAt(state, color, at) },
+    clocks: { ...state.clocks, [color]: 0 },
     moveCount: state.moveCount + 1,
     lastAction: `${label(winner)} wins on time!`,
     lastMove: {
@@ -226,7 +216,7 @@ function loseOnTime(
       from: null,
       to: null,
     },
-    turnStartedAt: null,
+    clockRunning: false,
   };
 }
 
@@ -235,7 +225,6 @@ function finish(
   color: Color,
   action: string,
   lastMove: LastMove,
-  turnStartedAt: number | null,
 ): ChessState {
   const rival = otherColor(color);
   const next = {
@@ -243,7 +232,7 @@ function finish(
     turn: rival,
     moveCount: state.moveCount + 1,
     lastMove,
-    turnStartedAt,
+    clockRunning: state.clockRunning,
   };
   const rivalAlive =
     next.board.some((piece) => piece?.color === rival) ||
@@ -257,7 +246,7 @@ function finish(
       ...next,
       winner: color,
       lastAction: `${label(color)} wins!`,
-      turnStartedAt: null,
+      clockRunning: false,
     };
   }
   if (!hasLegalAction(next, rival)) {
@@ -265,17 +254,16 @@ function finish(
       ...next,
       winner: color,
       lastAction: `${label(rival)} has no move — ${label(color)} wins!`,
-      turnStartedAt: null,
+      clockRunning: false,
     };
   }
   return { ...next, winner: null, lastAction: action };
 }
 
 export function reduceChess(state: ChessState, action: ChessAction): ChessState {
-  if (!state || state.schemaVersion !== 6) state = createInitialChessState();
-  const startedAt = timestampFrom(action.data, "startedAt");
+  if (!state || state.schemaVersion !== 7) state = createInitialChessState();
   if (action.type === "reset" && state.winner) {
-    return { ...createInitialChessState(), turnStartedAt: startedAt };
+    return { ...createInitialChessState(), clockRunning: true };
   }
   const color = action.data?.color;
 
@@ -285,34 +273,31 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
     action.type === "start" &&
     color === "white" &&
     !state.winner &&
-    state.turnStartedAt === null &&
-    startedAt
+    !state.clockRunning
   ) {
-    return { ...state, turnStartedAt: startedAt };
+    return { ...state, clockRunning: true };
   }
 
   if ((color !== "white" && color !== "black") || color !== state.turn || state.winner) {
     return state;
   }
 
-  const suppliedAt = timestampFrom(action.data, "actedAt");
-  if (state.turnStartedAt !== null && suppliedAt === null) return state;
-  const actedAt =
-    state.turnStartedAt === null
-      ? suppliedAt
-      : Math.max(suppliedAt ?? state.turnStartedAt, state.turnStartedAt);
-  const remaining =
-    actedAt === null ? state.clocks[color] : remainingAt(state, color, actedAt);
+  const elapsed = elapsedFrom(action.data);
+  if (state.clockRunning && elapsed === null) return state;
+  const remaining = Math.max(
+    0,
+    state.clocks[color] - (state.clockRunning ? elapsed ?? 0 : 0),
+  );
 
   if (action.type === "timeout") {
-    if (actedAt === null || state.turnStartedAt === null || remaining > 0) {
+    if (!state.clockRunning || elapsed === null || remaining > 0) {
       return state;
     }
-    return loseOnTime(state, color, actedAt);
+    return loseOnTime(state, color);
   }
 
-  if (remaining <= 0 && actedAt !== null) {
-    return loseOnTime(state, color, actedAt);
+  if (remaining <= 0 && state.clockRunning) {
+    return loseOnTime(state, color);
   }
 
   const timedState = {
@@ -347,7 +332,6 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
         to: index,
         pieceType: piece.type,
       },
-      actedAt,
     );
   }
 
@@ -389,7 +373,6 @@ export function reduceChess(state: ChessState, action: ChessAction): ChessState 
         to,
         pieceType: promoted ? "queen" : moving.type,
       },
-      actedAt,
     );
   }
   return state;

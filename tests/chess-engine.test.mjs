@@ -34,7 +34,7 @@ test("each side is dealt the full fourteen-piece tray", () => {
   assert.equal(RESERVE_ORDER.filter((type) => type === "pawn").length, 7);
   assert.equal(state.turn, "white");
   assert.equal(state.lastMove, null);
-  assert.equal(state.turnStartedAt, null);
+  assert.equal(state.clockRunning, false);
   assert.deepEqual(state.clocks, { white: 300_000, black: 300_000 });
   assert.equal(GAME_DURATION_MS, 300_000);
 });
@@ -54,18 +54,17 @@ test("every glyph is pinned to text presentation", () => {
 test("deployments are ordered and reject an out-of-turn action", () => {
   const initial = apply(createInitialChessState(), "start", {
     color: "white",
-    startedAt: 100_000,
   });
   const whitePawn = initial.reserves.white.find((piece) => piece.type === "pawn");
   const afterWhite = apply(initial, "deploy", {
     color: "white",
     pieceId: whitePawn.id,
     index: 12,
-    actedAt: 105_000,
+    elapsedMs: 5_000,
   });
   assert.equal(afterWhite.board[12]?.color, "white");
   assert.equal(afterWhite.turn, "black");
-  assert.equal(afterWhite.turnStartedAt, 105_000);
+  assert.equal(afterWhite.clockRunning, true);
   assert.deepEqual(afterWhite.clocks, { white: 295_000, black: 300_000 });
   assert.deepEqual(afterWhite.lastMove, {
     kind: "deploy",
@@ -179,15 +178,13 @@ test("only the active player's five-minute clock runs", () => {
   const initial = createInitialChessState();
   const started = apply(initial, "start", {
     color: "white",
-    startedAt: 10_000,
   });
-  assert.equal(started.turnStartedAt, 10_000);
+  assert.equal(started.clockRunning, true);
   assert.equal(started.turn, "white");
   assert.equal(started.moveCount, 0);
 
   const ignoredSecondStart = apply(started, "start", {
     color: "white",
-    startedAt: 20_000,
   });
   assert.equal(ignoredSecondStart, started);
 
@@ -196,44 +193,43 @@ test("only the active player's five-minute clock runs", () => {
     color: "white",
     pieceId: whitePawn.id,
     index: 12,
-    actedAt: 70_000,
+    elapsedMs: 60_000,
   });
   assert.equal(afterWhite.turn, "black");
   assert.deepEqual(afterWhite.clocks, { white: 240_000, black: 300_000 });
-  assert.equal(afterWhite.turnStartedAt, 70_000);
+  assert.equal(afterWhite.clockRunning, true);
 
   const blackPawn = afterWhite.reserves.black.find((piece) => piece.type === "pawn");
   const afterBlack = apply(afterWhite, "deploy", {
     color: "black",
     pieceId: blackPawn.id,
     index: 4,
-    actedAt: 100_000,
+    elapsedMs: 30_000,
   });
   assert.equal(afterBlack.turn, "white");
   assert.deepEqual(afterBlack.clocks, { white: 240_000, black: 270_000 });
-  assert.equal(afterBlack.turnStartedAt, 100_000);
+  assert.equal(afterBlack.clockRunning, true);
 });
 
 test("reaching zero loses the match instead of passing the turn", () => {
   const started = apply(createInitialChessState(), "start", {
     color: "white",
-    startedAt: 10_000,
   });
   const tooEarly = apply(started, "timeout", {
     color: "white",
-    actedAt: 309_999,
+    elapsedMs: 299_999,
   });
   assert.equal(tooEarly, started);
 
   const timedOut = apply(started, "timeout", {
     color: "white",
-    actedAt: 310_000,
+    elapsedMs: 300_000,
   });
   assert.equal(timedOut.turn, "black");
   assert.equal(timedOut.winner, "black");
   assert.equal(timedOut.moveCount, 1);
   assert.deepEqual(timedOut.clocks, { white: 0, black: 300_000 });
-  assert.equal(timedOut.turnStartedAt, null);
+  assert.equal(timedOut.clockRunning, false);
   assert.deepEqual(timedOut.lastMove, {
     kind: "timeout",
     color: "white",
@@ -269,6 +265,6 @@ test("a rival left with no legal action loses instead of deadlocking", () => {
 test("stale schema versions are rebuilt instead of trusted", () => {
   const legacy = { schemaVersion: 3, board: [], reserves: {}, turn: "white" };
   const rebuilt = reduceChess(legacy, { type: "noop", data: {} });
-  assert.equal(rebuilt.schemaVersion, 6);
+  assert.equal(rebuilt.schemaVersion, 7);
   assert.equal(rebuilt.reserves.white.length, RESERVE_ORDER.length);
 });
