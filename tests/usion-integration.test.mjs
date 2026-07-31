@@ -146,7 +146,7 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(game, /clockRunning=/);
   assert.doesNotMatch(game, /turn-timer/);
   assert.match(styles, /\.player-clock\.clock-running/);
-  assert.match(styles, /\.play-screen \{[\s\S]*height: 100svh; min-height: 0; overflow: hidden;/);
+  assert.match(styles, /\.play-screen \{[\s\S]*height: 100svh; min-height: 0; overflow: hidden; overflow: clip;/);
   assert.match(styles, /grid-template-columns: minmax\(0,1fr\)/);
   assert.match(styles, /\.reserve \{[\s\S]*width: min\(100%,500px\)/);
   assert.match(styles, /\.board-wrap \{[\s\S]*height: 100%;[\s\S]*min-height: 0;/);

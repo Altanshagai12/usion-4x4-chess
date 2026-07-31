@@ -189,7 +189,7 @@ h1 strong {
 
 .play-screen {
   display: grid; grid-template-rows: auto minmax(0,1fr) auto;
-  height: 100svh; min-height: 0; overflow: hidden;
+  height: 100svh; min-height: 0; overflow: hidden; overflow: clip;
 }
 .connection-notice {
   position: fixed;
