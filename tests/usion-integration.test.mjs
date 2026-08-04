@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { sharedStateReplacesOptimistic } from "../app/usion-sync.ts";
+import {
+  roomRecoverySequence,
+  sharedStateReplacesOptimistic,
+} from "../app/usion-sync.ts";
 
 const root = new URL("../", import.meta.url);
 
@@ -33,6 +36,13 @@ test("a newer opponent move replaces a missed optimistic echo", () => {
   );
 });
 
+test("rejoining detects room history even when join reuses a stale promise", () => {
+  assert.equal(roomRecoverySequence(0, 8), 8);
+  assert.equal(roomRecoverySequence(8, 0), 8);
+  assert.equal(roomRecoverySequence(undefined, undefined), 0);
+  assert.equal(roomRecoverySequence(-2, Number.NaN), 0);
+});
+
 test("uses the public Usion SDK and reconnect-safe ordered state", async () => {
   const [layout, hook] = await Promise.all([
     readFile(new URL("app/layout.tsx", root), "utf8"),
@@ -50,6 +60,10 @@ test("uses the public Usion SDK and reconnect-safe ordered state", async () => {
   assert.match(hook, /game\.onRoomAssigned/);
   assert.match(hook, /game\.onConnectionState/);
   assert.match(hook, /game\.onReconnected/);
+  assert.match(hook, /game\.requestSync\(0\)/);
+  assert.match(hook, /roomRecoverySequence/);
+  assert.match(hook, /hydratedRoomIdRef\.current === activeRoomIdRef\.current/);
+  assert.match(hook, /joiningRoomIdRef\.current === roomId/);
   assert.match(hook, /checkpointEvery:\s*1/);
   assert.match(hook, /authority:\s*"host"/);
   assert.match(hook, /nextTurn/);
@@ -150,10 +164,11 @@ test("a hosted match is unplayable until both seats are connected", async () => 
   assert.match(game, /if \(usion\.embedded && !usion\.started && screen !== "rules"\)/);
   assert.match(game, /players in the room/);
 
-  // `started` latches on both seats being present, so a mid-match blip shows
-  // the reconnect notice instead of bouncing players back to the lobby.
-  assert.match(hook, /const ready = ids\.length >= 2;/);
-  assert.match(hook, /if \(ready\) \{[\s\S]*setStarted\(true\);/);
+  // `started` opens only after both seats and the assigned room's recovered
+  // state are ready, so rejoining can never expose a new initial board.
+  assert.match(hook, /const rosterReady = ids\.length >= 2;/);
+  assert.match(hook, /const roomReady =[\s\S]*hydratedRoomIdRef\.current === activeRoomIdRef\.current;/);
+  assert.match(hook, /if \(roomReady\) \{[\s\S]*setStarted\(true\);/);
   // Being hosted is asserted before the SDK resolves, so a slow or failed SDK
   // can never fall back to offline play inside Usions.
   assert.ok(hook.indexOf("setEmbedded(true)") < hook.indexOf("while (!window.Usion"));
@@ -181,7 +196,7 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(hook, /localTurnStartedAt/);
   assert.match(hook, /roomClockActive/);
   assert.match(hook, /const clockLive = displayState\.clockRunning \|\| roomClockActive/);
-  assert.match(hook, /setRoomClockActive\(ready\)/);
+  assert.match(hook, /setRoomClockActive\(roomReady\)/);
   assert.doesNotMatch(hook, /actedAt|startedAt:\s*actionTime/);
   assert.match(game, /clockPosition="above"/);
   assert.match(game, /clockPosition="below"/);

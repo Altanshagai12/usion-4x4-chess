@@ -9,7 +9,10 @@ import {
   otherColor,
   reduceChess,
 } from "./chess-engine";
-import { sharedStateReplacesOptimistic } from "./usion-sync";
+import {
+  roomRecoverySequence,
+  sharedStateReplacesOptimistic,
+} from "./usion-sync";
 import type { OptimisticTarget } from "./usion-sync";
 
 export const QUICK_MESSAGES = [
@@ -51,6 +54,11 @@ type RosterEvent = {
   player_ids?: string[];
 };
 
+type RoomJoinResult = RosterEvent & {
+  room_id?: string;
+  sequence?: number;
+};
+
 type RealtimeEvent = {
   player_id?: string;
   action_type?: string;
@@ -71,7 +79,9 @@ type SharedState = {
     data?: Record<string, unknown>,
     options?: { nextTurn?: string; queueOffline?: boolean },
   ): Promise<{ success?: boolean; sequence?: number }>;
-  onChange(handler: (state: ChessState) => void): (() => void) | void;
+  onChange(
+    handler: (state: ChessState, reason?: "action" | "recover") => void,
+  ): (() => void) | void;
   destroy(): void;
 };
 
@@ -83,7 +93,7 @@ type InviteResult = {
 
 type UsionGame = {
   connect(): Promise<unknown>;
-  join(roomId: string): Promise<unknown>;
+  join(roomId: string): Promise<RoomJoinResult>;
   isMultiplayer(): boolean;
   // The platform owns the friend/group picker; the game never draws its own.
   invite(options?: Record<string, unknown>): Promise<InviteResult>;
@@ -117,7 +127,8 @@ type UsionGame = {
   onError(
     handler: (event: { message?: string; code?: string }) => void,
   ): (() => void) | void;
-  requestSync(): void;
+  requestSync(sequence?: number): void;
+  getLastSequence(): number;
 };
 
 type UsionGlobal = {
@@ -174,6 +185,10 @@ export function useUsionGame() {
   const optimisticTargetRef = useRef<OptimisticTarget | null>(null);
   const turnAnchorKeyRef = useRef("");
   const readyClockStartedRef = useRef(false);
+  const activeRoomIdRef = useRef("");
+  const hydratedRoomIdRef = useRef("");
+  const joiningRoomIdRef = useRef("");
+  const roomJoinPromiseRef = useRef<Promise<void> | null>(null);
 
   const stateKey = useCallback(
     (next: ChessState) =>
@@ -181,8 +196,40 @@ export function useUsionGame() {
     [],
   );
 
+  // Both seats filled means the match is live, but only after the assigned
+  // room's checkpoint/history has been restored. This prevents an initial
+  // board from flashing as a new match while a rejoin sync is still pending.
+  const applySeatState = useCallback((ids: string[]) => {
+    const rosterReady = ids.length >= 2;
+    const roomReady =
+      rosterReady &&
+      Boolean(activeRoomIdRef.current) &&
+      hydratedRoomIdRef.current === activeRoomIdRef.current;
+    setConnection(roomReady ? "ready" : rosterReady ? "recovering" : "waiting");
+    setRoomClockActive(roomReady);
+    if (roomReady) {
+      setStarted(true);
+      if (!readyClockStartedRef.current) {
+        const startedAt = Date.now();
+        readyClockStartedRef.current = true;
+        turnAnchorKeyRef.current = `room-ready:${startedAt}`;
+        setLocalTurnStartedAt(startedAt);
+        setNow(startedAt);
+      }
+    } else {
+      readyClockStartedRef.current = false;
+    }
+  }, []);
+
+  const markRoomHydrated = useCallback(() => {
+    const roomId = activeRoomIdRef.current;
+    if (!roomId) return;
+    hydratedRoomIdRef.current = roomId;
+    applySeatState(playerIdsRef.current);
+  }, [applySeatState]);
+
   const acceptSharedState = useCallback(
-    (incoming: ChessState) => {
+    (incoming: ChessState, reason?: "action" | "recover") => {
       const next = compatibleState(incoming);
       const key = stateKey(next);
       const optimisticTarget = optimisticTargetRef.current;
@@ -204,8 +251,14 @@ export function useUsionGame() {
         optimisticTargetRef.current = null;
         setOptimisticState(null);
       }
+      // Only a checkpoint/history recovery proves that an existing room is
+      // fully hydrated. A live action can arrive before that recovery and is
+      // not sufficient by itself to reconstruct the board.
+      if (reason === "recover") {
+        markRoomHydrated();
+      }
     },
-    [stateKey],
+    [markRoomHydrated, stateKey],
   );
 
   const showQuickMessage = useCallback(
@@ -235,27 +288,6 @@ export function useUsionGame() {
     },
     [],
   );
-
-  // Both seats filled means the match is live. `started` latches on so a later
-  // blip shows a reconnect notice rather than throwing players back to the
-  // lobby mid-game.
-  const applySeatState = useCallback((ids: string[]) => {
-    const ready = ids.length >= 2;
-    setConnection(ready ? "ready" : "waiting");
-    setRoomClockActive(ready);
-    if (ready) {
-      setStarted(true);
-      if (!readyClockStartedRef.current) {
-        const startedAt = Date.now();
-        readyClockStartedRef.current = true;
-        turnAnchorKeyRef.current = `room-ready:${startedAt}`;
-        setLocalTurnStartedAt(startedAt);
-        setNow(startedAt);
-      }
-    } else {
-      readyClockStartedRef.current = false;
-    }
-  }, []);
 
   const updateRoster = useCallback(
     (ids: string[] | undefined) => {
@@ -329,17 +361,68 @@ export function useUsionGame() {
         );
         acceptSharedState(shared.get());
 
-        const enterRoom = async (roomId: string) => {
-          try {
-            await usion.game.connect();
-            await usion.game.join(roomId);
-            applySeatState(playerIdsRef.current);
-          } catch (reason) {
-            setError(
-              reason instanceof Error ? reason.message : "Could not join the match",
-            );
-            setConnection("failed");
+        const enterRoom = (roomId: string): Promise<void> => {
+          if (
+            joiningRoomIdRef.current === roomId &&
+            roomJoinPromiseRef.current
+          ) {
+            return roomJoinPromiseRef.current;
           }
+
+          if (activeRoomIdRef.current !== roomId) {
+            activeRoomIdRef.current = roomId;
+            hydratedRoomIdRef.current = "";
+            readyClockStartedRef.current = false;
+            optimisticTargetRef.current = null;
+            setOptimisticState(null);
+            setStarted(false);
+            setRoomClockActive(false);
+          }
+          setActive(true);
+          setConnection(
+            playerIdsRef.current.length >= 2 ? "recovering" : "connecting",
+          );
+          setError("");
+
+          joiningRoomIdRef.current = roomId;
+          const joining = (async () => {
+            try {
+              await usion.game.connect();
+              const joined = await usion.game.join(roomId);
+              if (cancelled || activeRoomIdRef.current !== roomId) return;
+
+              updateRoster(joined.player_ids ?? playerIdsRef.current);
+              const sequence = roomRecoverySequence(
+                joined.sequence,
+                usion.game.getLastSequence(),
+              );
+              if (sequence > 0) {
+                // Always start from zero on a fresh shared-state instance. The
+                // SDK may reuse a resolved join promise whose original event
+                // can no longer reach the newly registered state listener.
+                setConnection("recovering");
+                usion.game.requestSync(0);
+              } else {
+                markRoomHydrated();
+              }
+              applySeatState(playerIdsRef.current);
+            } catch (reason) {
+              if (cancelled) return;
+              setError(
+                reason instanceof Error
+                  ? reason.message
+                  : "Could not join the match",
+              );
+              setConnection("failed");
+            } finally {
+              if (joiningRoomIdRef.current === roomId) {
+                joiningRoomIdRef.current = "";
+                roomJoinPromiseRef.current = null;
+              }
+            }
+          })();
+          roomJoinPromiseRef.current = joining;
+          return joining;
         };
         inviteRef.current = async () => {
           setInviting(true);
@@ -400,7 +483,8 @@ export function useUsionGame() {
           }
         }));
         addCleanup(cleanups, usion.game.onReconnected((event) => {
-          if (event.state) acceptSharedState(event.state);
+          if (event.state) acceptSharedState(event.state, "recover");
+          else usion.game.requestSync(0);
           applySeatState(playerIdsRef.current);
         }));
         addCleanup(cleanups, usion.game.onError((event) => {
@@ -439,7 +523,13 @@ export function useUsionGame() {
       sharedRef.current?.destroy();
       sharedRef.current = null;
     };
-  }, [acceptSharedState, applySeatState, showQuickMessage, updateRoster]);
+  }, [
+    acceptSharedState,
+    applySeatState,
+    markRoomHydrated,
+    showQuickMessage,
+    updateRoster,
+  ]);
 
   const seatIndex = playerIds.indexOf(userId);
   const userColor: Color | null =
@@ -660,7 +750,7 @@ export function useUsionGame() {
   const recover = useCallback(() => {
     setConnection("recovering");
     setError("");
-    window.Usion?.game.requestSync();
+    window.Usion?.game.requestSync(0);
   }, []);
 
   return {
