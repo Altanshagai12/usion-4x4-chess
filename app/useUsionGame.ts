@@ -14,6 +14,11 @@ import {
   sharedStateReplacesOptimistic,
 } from "./usion-sync";
 import type { OptimisticTarget } from "./usion-sync";
+import {
+  parseUsionPlayerProfile,
+  USION_API_ORIGIN,
+} from "./usion-profile";
+import type { UsionPlayerProfile } from "./usion-profile";
 
 export const QUICK_MESSAGES = [
   { id: "hurry", text: "Хурдлаарай ⏱️" },
@@ -138,7 +143,10 @@ type UsionGlobal = {
     roomId?: string;
     mode?: "single" | "multiplayer";
   };
-  user: { getId(): string | null };
+  user: {
+    getId(): string | null;
+    getToken(): string | null;
+  };
   game: UsionGame;
 };
 
@@ -175,6 +183,8 @@ export function useUsionGame() {
   const [now, setNow] = useState(() => Date.now());
   const [localTurnStartedAt, setLocalTurnStartedAt] = useState(0);
   const [roomClockActive, setRoomClockActive] = useState(false);
+  const [opponentProfile, setOpponentProfile] =
+    useState<UsionPlayerProfile | null>(null);
   const sharedRef = useRef<SharedState | null>(null);
   const playerIdsRef = useRef<string[]>([]);
   const inviteRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -536,6 +546,38 @@ export function useUsionGame() {
     seatIndex === 0 ? "white" : seatIndex === 1 ? "black" : null;
   const canAct = connection === "ready" && userColor === state.turn && !pending;
   const sharedClockActive = state.clockRunning || roomClockActive;
+  const opponentId = playerIds.find((id) => id && id !== userId) ?? "";
+
+  useEffect(() => {
+    const token = window.Usion?.user.getToken() ?? "";
+    if (!opponentId || !token) return;
+
+    const controller = new AbortController();
+    void fetch(
+      `${USION_API_ORIGIN}/auth/users/${encodeURIComponent(opponentId)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error(`Profile request failed: ${response.status}`);
+        return response.json() as Promise<unknown>;
+      })
+      .then((profile) => {
+        const parsed = parseUsionPlayerProfile(profile, opponentId);
+        if (parsed) setOpponentProfile(parsed);
+      })
+      .catch((reason: unknown) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+          // Profile decoration must never interrupt the match itself.
+          setOpponentProfile(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [opponentId]);
 
   const commit = useCallback(
     async (
@@ -768,6 +810,8 @@ export function useUsionGame() {
     clockRunning: clockLive,
     remainingByColor,
     quickMessage,
+    opponentProfile:
+      opponentProfile?.id === opponentId ? opponentProfile : null,
     commit,
     sendQuickMessage,
     invite,

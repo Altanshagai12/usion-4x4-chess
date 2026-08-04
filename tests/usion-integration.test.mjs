@@ -5,6 +5,7 @@ import {
   roomRecoverySequence,
   sharedStateReplacesOptimistic,
 } from "../app/usion-sync.ts";
+import { parseUsionPlayerProfile } from "../app/usion-profile.ts";
 
 const root = new URL("../", import.meta.url);
 
@@ -41,6 +42,32 @@ test("rejoining detects room history even when join reuses a stale promise", () 
   assert.equal(roomRecoverySequence(8, 0), 8);
   assert.equal(roomRecoverySequence(undefined, undefined), 0);
   assert.equal(roomRecoverySequence(-2, Number.NaN), 0);
+});
+
+test("Usions public profiles keep only the expected player's safe display data", () => {
+  assert.deepEqual(
+    parseUsionPlayerProfile(
+      {
+        id: "player-2",
+        name: "  Altan  ",
+        username: "altan",
+        avatar: "/media/avatars/altan.png",
+      },
+      "player-2",
+    ),
+    {
+      id: "player-2",
+      displayName: "Altan",
+      avatarUrl: "https://mobile.mongolai.mn/media/avatars/altan.png",
+    },
+  );
+  assert.equal(
+    parseUsionPlayerProfile(
+      { id: "someone-else", name: "Wrong player" },
+      "player-2",
+    ),
+    null,
+  );
 });
 
 test("uses the public Usion SDK and reconnect-safe ordered state", async () => {
@@ -239,4 +266,21 @@ test("last moves, five-minute clocks, and preset messages are visible in-game", 
   assert.match(hook, /game\.realtime\("quick_message"/);
   assert.match(game, /QUICK_MESSAGES\.map/);
   assert.doesNotMatch(game, /<input|<textarea/);
+});
+
+test("the opponent's Usions name and avatar replace the generic label", async () => {
+  const [game, hook, styles] = await Promise.all([
+    readFile(new URL("app/Game.tsx", root), "utf8"),
+    readFile(new URL("app/useUsionGame.ts", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.match(hook, /user\.getToken\(\)/);
+  assert.match(hook, /\/auth\/users\/\$\{encodeURIComponent\(opponentId\)\}/);
+  assert.match(hook, /setOpponentProfile\(parsed\)/);
+  assert.match(game, /usion\.opponentProfile\?\.displayName \?\? "OPPONENT"/);
+  assert.match(game, /avatarUrl=\{usion\.opponentProfile\?\.avatarUrl\}/);
+  assert.match(game, /showAvatar=\{seated\}/);
+  assert.match(styles, /\.clock-avatar img/);
+  assert.match(styles, /\.clock-player-name/);
 });

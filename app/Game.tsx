@@ -87,6 +87,8 @@ function ReserveTray({
   clockPosition,
   clockRunning,
   clockAction,
+  avatarUrl,
+  showAvatar = false,
   selection,
   onSelect,
 }: {
@@ -99,6 +101,8 @@ function ReserveTray({
   clockPosition: "above" | "below";
   clockRunning: boolean;
   clockAction?: React.ReactNode;
+  avatarUrl?: string | null;
+  showAvatar?: boolean;
   selection: Selection;
   onSelect: (piece: Piece) => void;
 }) {
@@ -106,6 +110,7 @@ function ReserveTray({
     0,
     Math.min(100, (clockMs / GAME_DURATION_MS) * 100),
   );
+  const avatarInitial = label.trim().charAt(0).toUpperCase() || "?";
   const clock = (
     <div className={`clock-row clock-row-${clockPosition}${clockAction ? " has-action" : ""}`}>
       <div
@@ -114,7 +119,25 @@ function ReserveTray({
         style={{ "--clock-progress": `${progress}%` } as React.CSSProperties}
       >
         <i className="clock-progress" aria-hidden="true" />
-        <span>{label}</span>
+        <div className="clock-player-identity">
+          {showAvatar && (
+            <span className="clock-avatar" aria-hidden="true">
+              <span>{avatarInitial}</span>
+              {avatarUrl && (
+                // The avatar URL is dynamic Usions profile data, not a build-time asset.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.hidden = true;
+                  }}
+                />
+              )}
+            </span>
+          )}
+          <span className="clock-player-name">{label}</span>
+        </div>
         <strong>{formatClock(clockMs)}</strong>
       </div>
       {clockAction}
@@ -497,6 +520,11 @@ export default function Game() {
     usion.userColor &&
     state.lastMove.color !== usion.userColor,
   );
+  const opponentLabel = seated
+    ? usion.opponentProfile?.displayName ?? "OPPONENT"
+    : topColor === "white"
+      ? "PLAYER 1"
+      : "PLAYER 2";
 
   return (
     <main className="game-shell play-screen">
@@ -515,7 +543,9 @@ export default function Game() {
           role="status"
           aria-live="polite"
         >
-          <small>{usion.quickMessage.from === "you" ? "YOU" : "OPPONENT"}</small>
+          <small>
+            {usion.quickMessage.from === "you" ? "YOU" : opponentLabel}
+          </small>
           <strong>{usion.quickMessage.text}</strong>
         </div>
       )}
@@ -523,7 +553,9 @@ export default function Game() {
       <div className="game-stage">
         <ReserveTray
           color={topColor}
-          label={seated ? "OPPONENT" : topColor === "white" ? "PLAYER 1" : "PLAYER 2"}
+          label={opponentLabel}
+          avatarUrl={usion.opponentProfile?.avatarUrl}
+          showAvatar={seated}
           pieces={reserves[topColor]}
           pawnsFirst={false}
           active={turn === topColor && canInteract}

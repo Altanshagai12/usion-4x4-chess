@@ -244,6 +244,9 @@ h1 strong {
   margin: 0 auto 5px; color: rgba(255,255,255,.82); font-size: .68rem;
   font-weight: 1000; letter-spacing: .08em;
 }
+.reserve-label > span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .reserve-label strong {
   display: grid; place-items: center; min-width: 48px; min-height: 22px; padding: 2px 6px;
   border-radius: 999px; background: rgba(44,11,99,.45); color: var(--yellow);
@@ -273,8 +276,23 @@ h1 strong {
   box-shadow: inset -3px 0 0 rgba(255,255,255,.34);
   transition: width .25s linear;
 }
-.player-clock span {
+.clock-player-identity {
+  position: relative; z-index: 1; display: flex; align-items: center; gap: 6px;
+  min-width: 0; overflow: hidden;
+}
+.clock-avatar {
+  position: relative; flex: 0 0 23px; display: grid; place-items: center;
+  width: 23px; height: 23px; overflow: hidden; border: 1px solid rgba(255,255,255,.7);
+  border-radius: 50%; background: #5b2a93; color: white;
+  box-shadow: 0 1px 4px rgba(37,8,77,.4);
+  font-size: .66rem; font-weight: 1000; letter-spacing: 0;
+}
+.clock-avatar img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+}
+.clock-player-name {
   position: relative; z-index: 1;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: .58rem; font-weight: 1000; letter-spacing: .1em;
   text-shadow: 0 1px 2px rgba(40,9,80,.7);
 }
@@ -505,6 +523,7 @@ h1 strong {
   .reserve { width: min(90vw,380px); }
   .reserve-label { display: none; }
   .player-clock { min-height: 26px; padding-block: 2px; }
+  .clock-avatar { flex-basis: 19px; width: 19px; height: 19px; font-size: .55rem; }
   .player-clock strong { font-size: .9rem; }
   .reserve-grid { padding: 4px; border-width: 3px; }
   .board { width: min(40svh,70vw,300px); padding: 6px; border-width: 5px; }
