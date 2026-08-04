@@ -9,6 +9,8 @@ import {
   otherColor,
   reduceChess,
 } from "./chess-engine";
+import { sharedStateReplacesOptimistic } from "./usion-sync";
+import type { OptimisticTarget } from "./usion-sync";
 
 export const QUICK_MESSAGES = [
   { id: "hurry", text: "Хурдлаарай ⏱️" },
@@ -169,7 +171,7 @@ export function useUsionGame() {
   const quickMessageCooldownRef = useRef(0);
   const startingClockRef = useRef(false);
   const timeoutTurnRef = useRef("");
-  const optimisticStateKeyRef = useRef<string | null>(null);
+  const optimisticTargetRef = useRef<OptimisticTarget | null>(null);
   const turnAnchorKeyRef = useRef("");
   const readyClockStartedRef = useRef(false);
 
@@ -183,8 +185,13 @@ export function useUsionGame() {
     (incoming: ChessState) => {
       const next = compatibleState(incoming);
       const key = stateKey(next);
-      const optimisticKey = optimisticStateKeyRef.current;
-      if (optimisticKey && key !== optimisticKey) {
+      const optimisticTarget = optimisticTargetRef.current;
+      const replacesOptimistic = sharedStateReplacesOptimistic(
+        next,
+        key,
+        optimisticTarget,
+      );
+      if (optimisticTarget && !replacesOptimistic) {
         setState(next);
         return;
       }
@@ -193,8 +200,8 @@ export function useUsionGame() {
         setLocalTurnStartedAt(Date.now());
       }
       setState(next);
-      if (optimisticKey === key) {
-        optimisticStateKeyRef.current = null;
+      if (optimisticTarget && replacesOptimistic) {
+        optimisticTargetRef.current = null;
         setOptimisticState(null);
       }
     },
@@ -466,7 +473,11 @@ export function useUsionGame() {
         data: { ...actionData, color: userColor },
       });
       if (preview !== state) {
-        optimisticStateKeyRef.current = stateKey(preview);
+        optimisticTargetRef.current = {
+          key: stateKey(preview),
+          moveCount: preview.moveCount,
+          actionType: type,
+        };
         turnAnchorKeyRef.current = stateKey(preview);
         setLocalTurnStartedAt(actionTime);
         setOptimisticState(preview);
@@ -479,7 +490,7 @@ export function useUsionGame() {
         });
         return true;
       } catch (reason) {
-        optimisticStateKeyRef.current = null;
+        optimisticTargetRef.current = null;
         turnAnchorKeyRef.current = previousAnchorKey;
         setLocalTurnStartedAt(previousLocalTurnStartedAt);
         setOptimisticState(null);

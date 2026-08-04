@@ -1,8 +1,37 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { sharedStateReplacesOptimistic } from "../app/usion-sync.ts";
 
 const root = new URL("../", import.meta.url);
+
+test("a newer opponent move replaces a missed optimistic echo", () => {
+  const target = {
+    key: "7:1:black:true",
+    moveCount: 1,
+    actionType: "deploy",
+  };
+  const oldState = { schemaVersion: 7, moveCount: 0, winner: null };
+  const exactEcho = { schemaVersion: 7, moveCount: 1, winner: null };
+  const opponentMove = { schemaVersion: 7, moveCount: 2, winner: null };
+
+  assert.equal(
+    sharedStateReplacesOptimistic(oldState, "7:0:white:true", target),
+    false,
+  );
+  assert.equal(
+    sharedStateReplacesOptimistic(exactEcho, target.key, target),
+    true,
+  );
+  assert.equal(
+    sharedStateReplacesOptimistic(
+      opponentMove,
+      "7:2:white:true",
+      target,
+    ),
+    true,
+  );
+});
 
 test("uses the public Usion SDK and reconnect-safe ordered state", async () => {
   const [layout, hook] = await Promise.all([
