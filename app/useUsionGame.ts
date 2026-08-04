@@ -14,10 +14,7 @@ import {
   sharedStateReplacesOptimistic,
 } from "./usion-sync";
 import type { OptimisticTarget } from "./usion-sync";
-import {
-  parseUsionPlayerProfile,
-  USION_API_ORIGIN,
-} from "./usion-profile";
+import { parseUsionPlayerProfile } from "./usion-profile";
 import type { UsionPlayerProfile } from "./usion-profile";
 
 export const QUICK_MESSAGES = [
@@ -68,6 +65,12 @@ type RealtimeEvent = {
   player_id?: string;
   action_type?: string;
   action_data?: Record<string, unknown>;
+};
+
+type UsionOwnProfile = {
+  id?: string | null;
+  name?: string | null;
+  avatar?: string | null;
 };
 
 type SyncedAction = {
@@ -145,7 +148,7 @@ type UsionGlobal = {
   };
   user: {
     getId(): string | null;
-    getToken(): string | null;
+    getProfile(): Promise<UsionOwnProfile>;
   };
   game: UsionGame;
 };
@@ -348,6 +351,35 @@ export function useUsionGame() {
         setUserId(currentUserId);
         updateRoster(config.playerIds ?? []);
 
+        const broadcastOwnProfile = async () => {
+          if (!currentUserId) return;
+          try {
+            const profile = parseUsionPlayerProfile(
+              await usion.user.getProfile(),
+              currentUserId,
+            );
+            if (!profile) return;
+            await Promise.resolve(
+              usion.game.realtime("player_profile", {
+                name: profile.displayName,
+                avatar: profile.avatarUrl,
+              }),
+            );
+          } catch {
+            // Profile decoration never blocks room connection or gameplay.
+          }
+        };
+
+        const requestOpponentProfile = async () => {
+          try {
+            await Promise.resolve(
+              usion.game.realtime("player_profile_request", {}),
+            );
+          } catch {
+            // The next roster/reconnect event retries the request.
+          }
+        };
+
         const shared = usion.game.syncedState(createInitialChessState(), {
           reduce: (current, action) => {
             const playerId = action.playerId ?? "";
@@ -416,6 +448,7 @@ export function useUsionGame() {
                 markRoomHydrated();
               }
               applySeatState(playerIdsRef.current);
+              await requestOpponentProfile();
             } catch (reason) {
               if (cancelled) return;
               setError(
@@ -457,24 +490,38 @@ export function useUsionGame() {
         addCleanup(cleanups, usion.game.onJoined((event) => {
           setActive(true);
           updateRoster(event.player_ids ?? playerIdsRef.current);
+          void requestOpponentProfile();
         }));
         addCleanup(cleanups, usion.game.onPlayerJoined((event) => {
           setActive(true);
           updateRoster(event.player_ids);
+          void broadcastOwnProfile();
         }));
         addCleanup(cleanups, usion.game.onPlayerLeft((event) => {
           updateRoster(event.player_ids);
           setError("Your opponent left the match.");
         }));
         addCleanup(cleanups, usion.game.onRealtime((event) => {
-          if (
-            event.action_type !== "quick_message" ||
-            event.player_id === currentUserId
-          ) {
+          const senderId = event.player_id ?? "";
+          if (!senderId || senderId === currentUserId) return;
+          if (event.action_type === "player_profile_request") {
+            void broadcastOwnProfile();
             return;
           }
-          const message = findQuickMessage(event.action_data?.id);
-          if (message) showQuickMessage(message, "opponent");
+          if (event.action_type === "player_profile") {
+            const profile = parseUsionPlayerProfile(
+              { id: senderId, ...event.action_data },
+              senderId,
+            );
+            if (profile && playerIdsRef.current.includes(senderId)) {
+              setOpponentProfile(profile);
+            }
+            return;
+          }
+          if (event.action_type === "quick_message") {
+            const message = findQuickMessage(event.action_data?.id);
+            if (message) showQuickMessage(message, "opponent");
+          }
         }));
         // A solo launch is promoted into a room by the host Share button or by
         // game.invite(). Joining here is what makes that promotion real —
@@ -496,6 +543,7 @@ export function useUsionGame() {
           if (event.state) acceptSharedState(event.state, "recover");
           else usion.game.requestSync(0);
           applySeatState(playerIdsRef.current);
+          void requestOpponentProfile();
         }));
         addCleanup(cleanups, usion.game.onError((event) => {
           setError(event.message ?? event.code ?? "Usions connection error");
@@ -547,37 +595,6 @@ export function useUsionGame() {
   const canAct = connection === "ready" && userColor === state.turn && !pending;
   const sharedClockActive = state.clockRunning || roomClockActive;
   const opponentId = playerIds.find((id) => id && id !== userId) ?? "";
-
-  useEffect(() => {
-    const token = window.Usion?.user.getToken() ?? "";
-    if (!opponentId || !token) return;
-
-    const controller = new AbortController();
-    void fetch(
-      `${USION_API_ORIGIN}/auth/users/${encodeURIComponent(opponentId)}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-        signal: controller.signal,
-      },
-    )
-      .then((response) => {
-        if (!response.ok) throw new Error(`Profile request failed: ${response.status}`);
-        return response.json() as Promise<unknown>;
-      })
-      .then((profile) => {
-        const parsed = parseUsionPlayerProfile(profile, opponentId);
-        if (parsed) setOpponentProfile(parsed);
-      })
-      .catch((reason: unknown) => {
-        if (!(reason instanceof DOMException && reason.name === "AbortError")) {
-          // Profile decoration must never interrupt the match itself.
-          setOpponentProfile(null);
-        }
-      });
-
-    return () => controller.abort();
-  }, [opponentId]);
 
   const commit = useCallback(
     async (

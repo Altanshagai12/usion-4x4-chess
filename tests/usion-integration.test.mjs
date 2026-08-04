@@ -275,9 +275,12 @@ test("the opponent's Usions name and avatar replace the generic label", async ()
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
 
-  assert.match(hook, /user\.getToken\(\)/);
-  assert.match(hook, /\/auth\/users\/\$\{encodeURIComponent\(opponentId\)\}/);
-  assert.match(hook, /setOpponentProfile\(parsed\)/);
+  assert.match(hook, /usion\.user\.getProfile\(\)/);
+  assert.match(hook, /game\.realtime\("player_profile_request", \{\}\)/);
+  assert.match(hook, /game\.realtime\("player_profile"/);
+  assert.match(hook, /event\.action_type === "player_profile"/);
+  assert.match(hook, /setOpponentProfile\(profile\)/);
+  assert.doesNotMatch(hook, /\/auth\/users\//);
   assert.match(game, /usion\.opponentProfile\?\.displayName \?\? "OPPONENT"/);
   assert.match(game, /avatarUrl=\{usion\.opponentProfile\?\.avatarUrl\}/);
   assert.match(game, /showAvatar=\{seated\}/);
