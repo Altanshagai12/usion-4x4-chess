@@ -83,7 +83,7 @@ Redeploy later with `railway up -y -c --service usion-4x4-chess`.
 | Usion service id | `4-4-chess-last-man-stand-891b95f2` (`service_type: game`, published) |
 | Transport | `multiplayer.profile: state` — platform WebSocket relay, 2 seats |
 | SDK | v2 / protocol 2, matching `https://usions.com/usion-sdk.js` |
-| Leaderboard | none — chess produces a winner, not a score |
+| Leaderboard | descending Elo-style rating (starts at 1200) |
 
 No change was made to `usionthemobile`. The game appears on the platform purely
 through its registry entry.
@@ -123,7 +123,8 @@ and without touching the registry.
   "cost": 0,
   "tags": ["game", "multiplayer", "iframe", "strategy", "turn-based", "chess"],
   "is_published": true,
-  "multiplayer": { "profile": "state", "maxPlayers": 2 }
+  "multiplayer": { "profile": "state", "maxPlayers": 2 },
+  "leaderboard": { "enabled": true, "order": "desc", "mode": "rating" }
 }
 ```
 
@@ -135,5 +136,6 @@ the iframe host — a game server this repository never deploys, so every room
 would fail to connect. The publisher re-reads the public catalog after writing
 and fails if the stored entry is not a two-seat platform-relay match.
 
-The service carries no leaderboard: last-man-standing chess produces a winner,
-not a score, so the platform records loop does not apply.
+Each finished match updates both players' Elo-style ratings. The host also
+reports the winner with a stable match id so Usion can create one deduplicated
+Game Center result card.

@@ -662,7 +662,21 @@ export default function Game() {
             <span className={`winner-piece winner-${winner}`}>{GLYPHS.queen}</span>
             <p>{state.lastMove?.kind === "timeout" ? "TIME EXPIRED" : "LAST MAN STANDING"}</p>
             <h2>{winner === "white" ? "WHITE" : "BLACK"} WINS!</h2>
-            <button className="primary-button" onClick={resetGame}>REMATCH</button>
+            <button
+              className="primary-button"
+              onClick={usion.recordStatus === "error" ? usion.retryRecord : resetGame}
+              disabled={usion.active && !usion.canRematch && usion.recordStatus !== "error"}
+            >
+              {!usion.active
+                ? "REMATCH"
+                : usion.recordStatus === "saving" || usion.recordStatus === "idle"
+                  ? "SAVING RECORD…"
+                  : usion.recordStatus === "error"
+                    ? "RETRY RECORD"
+                    : usion.canRematch
+                      ? "REMATCH"
+                      : "WAITING FOR HOST"}
+            </button>
             <button className="text-button" onClick={() => setScreen("home")}>BACK HOME</button>
           </section>
         </div>

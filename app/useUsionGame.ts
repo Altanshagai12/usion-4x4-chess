@@ -16,6 +16,11 @@ import {
 import type { OptimisticTarget } from "./usion-sync";
 import { parseUsionPlayerProfile } from "./usion-profile";
 import type { UsionPlayerProfile } from "./usion-profile";
+import {
+  chessMatchId,
+  saveChessRecord,
+  type ChessRecordJob,
+} from "./chess-records";
 
 export const QUICK_MESSAGES = [
   { id: "hurry", text: "Хурдлаарай ⏱️" },
@@ -90,6 +95,7 @@ type SharedState = {
   onChange(
     handler: (state: ChessState, reason?: "action" | "recover") => void,
   ): (() => void) | void;
+  getSequence(): number;
   destroy(): void;
 };
 
@@ -137,6 +143,20 @@ type UsionGame = {
   ): (() => void) | void;
   requestSync(sequence?: number): void;
   getLastSequence(): number;
+  reportResult(result: {
+    winnerId: string;
+    roomId: string;
+    matchId: string;
+  }): Promise<{ ok: boolean }>;
+};
+
+type UsionLeaderboard = {
+  me(): Promise<{ score: number | null; metadata?: Record<string, unknown> }>;
+  scores(userIds: string[]): Promise<Record<string, number | null>>;
+  submit(
+    score: number,
+    metadata?: Record<string, unknown>,
+  ): Promise<{ success: boolean; best: number }>;
 };
 
 type UsionGlobal = {
@@ -151,6 +171,7 @@ type UsionGlobal = {
     getProfile(): Promise<UsionOwnProfile>;
   };
   game: UsionGame;
+  leaderboard: UsionLeaderboard;
 };
 
 declare global {
@@ -202,6 +223,41 @@ export function useUsionGame() {
   const hydratedRoomIdRef = useRef("");
   const joiningRoomIdRef = useRef("");
   const roomJoinPromiseRef = useRef<Promise<void> | null>(null);
+  const settlingMatchRef = useRef("");
+  const settledMatchRef = useRef("");
+  const pendingRecordRef = useRef<ChessRecordJob | null>(null);
+  const [recordStatus, setRecordStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
+  const settleRecord = useCallback(async (job: ChessRecordJob) => {
+    const matchId = chessMatchId(job.roomId, job.sequence);
+    if (
+      settledMatchRef.current === matchId ||
+      settlingMatchRef.current === matchId
+    ) {
+      return;
+    }
+    settlingMatchRef.current = matchId;
+    pendingRecordRef.current = job;
+    setRecordStatus("saving");
+    setError("");
+    try {
+      await saveChessRecord(job);
+      settledMatchRef.current = matchId;
+      pendingRecordRef.current = null;
+      setRecordStatus("saved");
+    } catch (reason) {
+      setRecordStatus("error");
+      setError(
+        reason instanceof Error
+          ? `Match finished, but the record was not saved: ${reason.message}`
+          : "Match finished, but the record was not saved.",
+      );
+    } finally {
+      if (settlingMatchRef.current === matchId) settlingMatchRef.current = "";
+    }
+  }, []);
 
   const stateKey = useCallback(
     (next: ChessState) =>
@@ -419,6 +475,10 @@ export function useUsionGame() {
             setOptimisticState(null);
             setStarted(false);
             setRoomClockActive(false);
+            settlingMatchRef.current = "";
+            settledMatchRef.current = "";
+            pendingRecordRef.current = null;
+            setRecordStatus("idle");
           }
           setActive(true);
           setConnection(
@@ -602,7 +662,12 @@ export function useUsionGame() {
       data: Record<string, unknown>,
     ) => {
       const shared = sharedRef.current;
-      if (!shared || !userColor || (type !== "reset" && !canAct)) return false;
+      if (
+        !shared ||
+        !userColor ||
+        (type === "reset" && playerIds[0] !== userId) ||
+        (type !== "reset" && !canAct)
+      ) return false;
       const opponentIndex = userColor === "white" ? 1 : 0;
       const opponentId = playerIds[opponentIndex];
       const nextTurn = type === "reset" ? playerIds[0] : opponentId;
@@ -659,6 +724,7 @@ export function useUsionGame() {
       state,
       stateKey,
       userColor,
+      userId,
     ],
   );
 
@@ -701,6 +767,50 @@ export function useUsionGame() {
 
   const displayState = optimisticState ?? state;
   const clockLive = displayState.clockRunning || roomClockActive;
+
+  useEffect(() => {
+    if (!state.winner) {
+      if (!pendingRecordRef.current) setRecordStatus("idle");
+      return;
+    }
+    if (
+      !active ||
+      connection !== "ready" ||
+      playerIds.length < 2 ||
+      !userId ||
+      !userColor
+    ) {
+      return;
+    }
+    const shared = sharedRef.current;
+    const roomId = activeRoomIdRef.current;
+    if (!shared || !roomId) return;
+    const sequence = shared.getSequence();
+    if (sequence <= 0) return;
+    const winnerId = state.winner === "white" ? playerIds[0] : playerIds[1];
+    const opponentId = playerIds.find((id) => id && id !== userId);
+    const usion = window.Usion;
+    if (!usion || !winnerId || !opponentId) return;
+
+    void settleRecord({
+      leaderboard: usion.leaderboard,
+      game: usion.game,
+      roomId,
+      sequence,
+      userId,
+      opponentId,
+      winnerId,
+      isHost: playerIds[0] === userId,
+    });
+  }, [
+    active,
+    connection,
+    playerIds,
+    settleRecord,
+    state.winner,
+    userColor,
+    userId,
+  ]);
 
   useEffect(() => {
     if (state.clockRunning) startingClockRef.current = false;
@@ -812,6 +922,11 @@ export function useUsionGame() {
     window.Usion?.game.requestSync(0);
   }, []);
 
+  const retryRecord = useCallback(() => {
+    const pending = pendingRecordRef.current;
+    if (pending) void settleRecord(pending);
+  }, [settleRecord]);
+
   return {
     active,
     embedded,
@@ -834,5 +949,9 @@ export function useUsionGame() {
     invite,
     recover,
     opponentColor: userColor ? otherColor(userColor) : null,
+    recordStatus,
+    retryRecord,
+    canRematch:
+      !active || (playerIds[0] === userId && recordStatus === "saved"),
   };
 }

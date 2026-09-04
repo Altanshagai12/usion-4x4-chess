@@ -37,7 +37,7 @@ const SERVICE = Object.freeze({
     "chess",
   ]),
   is_published: true,
-  // Chess has no score, so the leaderboard/records loop stays off deliberately.
+  leaderboard: Object.freeze({ enabled: true, order: "desc", mode: "rating" }),
   multiplayer: Object.freeze({ profile: "state", maxPlayers: 2 }),
 });
 
@@ -75,6 +75,7 @@ export function servicePayload(settings) {
     cost: SERVICE.cost,
     tags: [...SERVICE.tags],
     is_published: SERVICE.is_published,
+    leaderboard: { ...SERVICE.leaderboard },
     multiplayer: { ...SERVICE.multiplayer },
   };
   if (settings.image) payload.image = settings.image;
@@ -134,6 +135,13 @@ function assertPublished(entry, payload) {
     throw new Error(
       `Registry multiplayer profile is ${entry.multiplayer?.profile ?? "missing"}, expected state.`,
     );
+  }
+  if (
+    entry.leaderboard?.enabled !== true ||
+    entry.leaderboard?.order !== "desc" ||
+    entry.leaderboard?.mode !== "rating"
+  ) {
+    throw new Error("Registry leaderboard is not an enabled descending rating board.");
   }
   const realtime = entry.realtime;
   if (

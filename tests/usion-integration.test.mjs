@@ -143,6 +143,25 @@ test("a second player arrives through the platform invite, never self-play", asy
   assert.match(game, /INVITE A FRIEND/);
 });
 
+test("finished matches feed the rating board and Game Center result cards", async () => {
+  const [hook, records, game] = await Promise.all([
+    readFile(new URL("app/useUsionGame.ts", root), "utf8"),
+    readFile(new URL("app/chess-records.ts", root), "utf8"),
+    readFile(new URL("app/Game.tsx", root), "utf8"),
+  ]);
+
+  assert.match(hook, /usion\.leaderboard/);
+  assert.match(hook, /shared\.getSequence\(\)/);
+  assert.match(records, /leaderboard\.me\(\)/);
+  assert.match(records, /leaderboard\.scores\(/);
+  assert.match(records, /leaderboard\.submit\(/);
+  assert.match(records, /game\.reportResult\(/);
+  assert.match(records, /metadata\?\.matchId === matchId/);
+  assert.match(records, /if \(job\.isHost\)/);
+  assert.match(game, /SAVING RECORD…/);
+  assert.match(game, /RETRY RECORD/);
+});
+
 test("each player views the board from their own side", async () => {
   const game = await readFile(new URL("app/Game.tsx", root), "utf8");
 

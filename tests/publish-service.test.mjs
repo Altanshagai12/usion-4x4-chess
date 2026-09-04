@@ -21,6 +21,7 @@ const registryEntry = {
   multiplayer: { profile: "state", maxPlayers: 2 },
   realtime: null,
   game_config: { room_mode: "match", max_players: 2, min_players: 2 },
+  leaderboard: { enabled: true, order: "desc", mode: "rating" },
 };
 
 function stubFetch(routes, seen = []) {
@@ -64,7 +65,11 @@ test("the payload keeps the match on the platform relay", () => {
   // The registry derives the platform relay from this profile; direct transport
   // settings never belong in the publisher payload.
   assert.equal(payload.realtime, undefined);
-  assert.equal(payload.leaderboard, undefined);
+  assert.deepEqual(payload.leaderboard, {
+    enabled: true,
+    order: "desc",
+    mode: "rating",
+  });
   assert.ok(payload.tags.includes("game"));
   assert.ok(payload.tags.includes("multiplayer"));
   assert.equal(payload.image, undefined);
@@ -142,6 +147,7 @@ test("an existing game is updated in place instead of duplicated", async () => {
     [`${API_ORIGIN}/registry/services`, "GET"],
   ]);
   assert.equal(sent.multiplayer.profile, "state");
+  assert.deepEqual(sent.leaderboard, registryEntry.leaderboard);
   assert.equal(service.created, false);
 });
 
