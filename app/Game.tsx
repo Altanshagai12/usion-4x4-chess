@@ -18,6 +18,7 @@ import {
   reduceChess,
   row,
 } from "./chess-engine";
+import { chooseBotAction } from "./chess-bot";
 import { QUICK_MESSAGES, useUsionGame } from "./useUsionGame";
 
 type Screen = "home" | "rules" | "game";
@@ -224,7 +225,9 @@ export default function Game() {
   const [selection, setSelection] = useState<Selection>(null);
   const [soundOn, setSoundOn] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
-  const state = usion.active ? usion.state : localState;
+  const [botMode, setBotMode] = useState(false);
+  const hostedMatch = usion.active && !botMode;
+  const state = hostedMatch ? usion.state : localState;
   const { board, reserves, turn, winner, captures } = state;
 
   useEffect(() => {
@@ -238,7 +241,7 @@ export default function Game() {
   }, [state.moveCount]);
   useEffect(() => {
     if (
-      usion.active ||
+      hostedMatch ||
       screen !== "game" ||
       !localState.clockRunning ||
       localState.winner
@@ -271,12 +274,45 @@ export default function Game() {
     localState.winner,
     localTurnStartedAt,
     screen,
-    usion.active,
+    hostedMatch,
   ]);
 
-  // Inside Usions every move must go through the room, so the board is live
-  // only on your own turn. Offline hot-seat exists solely outside the host.
-  const canInteract = !winner && (usion.embedded ? usion.canAct : true);
+  useEffect(() => {
+    if (
+      !botMode ||
+      screen !== "game" ||
+      localState.turn !== "black" ||
+      localState.winner
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const actionTime = clockNow();
+      setLocalState((current) => {
+        if (current.turn !== "black" || current.winner) return current;
+        const action = chooseBotAction(current, "black");
+        if (!action) return current;
+        const elapsedMs = current.clockRunning
+          ? Math.max(0, actionTime - localTurnStartedAt)
+          : 0;
+        return reduceChess(current, {
+          ...action,
+          data: { ...action.data, color: "black", elapsedMs },
+        });
+      });
+      setLocalTurnStartedAt(actionTime);
+      setLocalNow(actionTime);
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [botMode, localState.moveCount, localState.turn, localState.winner, localTurnStartedAt, screen]);
+
+  // A friend match is live only on the local Usions seat. Bot games stay
+  // completely local and deliberately accept input only for white.
+  const canInteract = !winner && (
+    botMode ? turn === "white" : usion.embedded ? usion.canAct : true
+  );
   const legalTargets = useMemo(() => {
     if (!selection || !canInteract) return [];
     if (selection.source === "reserve") {
@@ -289,7 +325,7 @@ export default function Game() {
     type: "deploy" | "move" | "reset",
     data: Record<string, unknown>,
   ) => {
-    if (usion.active) {
+    if (hostedMatch) {
       await usion.commit(type, data);
       return;
     }
@@ -309,8 +345,8 @@ export default function Game() {
 
   const resetGame = () => {
     setSelection(null);
-    if (usion.active && winner) void dispatch("reset", {});
-    else if (!usion.active) {
+    if (hostedMatch && winner) void dispatch("reset", {});
+    else if (!hostedMatch) {
       const startedAt = clockNow();
       setLocalState(
         reduceChess(createInitialChessState(), {
@@ -322,6 +358,29 @@ export default function Game() {
       setLocalNow(startedAt);
     }
     setScreen("game");
+  };
+
+  const startBotGame = () => {
+    const startedAt = clockNow();
+    setSelection(null);
+    setChatOpen(false);
+    setBotMode(true);
+    setLocalState(
+      reduceChess(createInitialChessState(), {
+        type: "start",
+        data: { color: "white" },
+      }),
+    );
+    setLocalTurnStartedAt(startedAt);
+    setLocalNow(startedAt);
+    setScreen("game");
+  };
+
+  const backHome = () => {
+    setSelection(null);
+    setChatOpen(false);
+    setBotMode(false);
+    setScreen("home");
   };
 
   const selectReserve = (piece: Piece) => {
@@ -362,7 +421,7 @@ export default function Game() {
   // Inside Usions the match cannot begin until the second seat is filled, so
   // the lobby holds the screen until then rather than exposing a playable
   // board. Other platform games behave the same way.
-  if (usion.embedded && !usion.started && screen !== "rules") {
+  if (usion.embedded && !botMode && !usion.started && screen !== "rules") {
     const seats = Math.max(usion.playerIds.length, 1);
     const inRoom = usion.active;
     return (
@@ -408,6 +467,9 @@ export default function Game() {
                   <span aria-hidden="true">♟</span>{" "}
                   {usion.inviting ? "OPENING…" : inRoom ? "INVITE ANOTHER FRIEND" : "INVITE A FRIEND"}
                 </button>
+                <button className="bot-button" onClick={startBotGame}>
+                  <span aria-hidden="true">♛</span> PLAY VS BOT
+                </button>
                 <button className="secondary-button" onClick={() => setScreen("rules")}>HOW TO PLAY?</button>
               </div>
             </>
@@ -421,7 +483,9 @@ export default function Game() {
   if (screen === "home") {
     // The lobby above owns every hosted session that has not started, so this
     // screen is only reached mid-match or outside the Usions host entirely.
-    const primary = usion.embedded
+    const primary = botMode
+      ? { label: "PLAY VS BOT", run: startBotGame }
+      : usion.embedded
       ? { label: "RETURN TO MATCH", run: () => setScreen("game") }
       : { label: "PRACTICE ON THIS DEVICE", run: resetGame };
 
@@ -436,14 +500,21 @@ export default function Game() {
           <p className="eyebrow">QUICK ONLINE DUEL</p>
           <h1><span>4×4 CHESS</span><strong>LAST MAN STAND</strong></h1>
           <p className="home-copy">
-            {usion.embedded
-              ? "Invite a friend in Usions and battle from two different phones."
+            {botMode
+              ? "Start a fresh match against the bot. You play as White."
+              : usion.embedded
+              ? "Invite a friend or play immediately against the bot."
               : "Open this game inside Usions to duel a friend from two phones."}
           </p>
           <div className="home-actions">
-            <button className="primary-button" onClick={primary.run}>
+            <button className={botMode ? "bot-button" : "primary-button"} onClick={primary.run}>
               <span aria-hidden="true">♟</span> {primary.label}
             </button>
+            {!usion.embedded && !botMode && (
+              <button className="bot-button" onClick={startBotGame}>
+                <span aria-hidden="true">♛</span> PLAY VS BOT
+              </button>
+            )}
             <button className="secondary-button" onClick={() => setScreen("rules")}>HOW TO PLAY?</button>
           </div>
           {usion.error && <p className="home-error">{usion.error}</p>}
@@ -484,9 +555,9 @@ export default function Game() {
             {RULES.map((_, index) => <span className={index === rulePage ? "active" : ""} key={index} />)}
           </div>
           <div className="rules-actions">
-            <button className="icon-button" onClick={() => rulePage === 0 ? setScreen(usion.active ? "game" : "home") : setRulePage((page) => page - 1)} aria-label="Previous">←</button>
+            <button className="icon-button" onClick={() => rulePage === 0 ? setScreen(hostedMatch || botMode ? "game" : "home") : setRulePage((page) => page - 1)} aria-label="Previous">←</button>
             <button className="primary-button rules-next" onClick={() => {
-              if (rulePage === RULES.length - 1) setScreen(usion.active || !usion.embedded ? "game" : "home");
+              if (rulePage === RULES.length - 1) setScreen(hostedMatch || botMode || !usion.embedded ? "game" : "home");
               else setRulePage((page) => page + 1);
             }}>{rulePage === RULES.length - 1 ? "BACK TO GAME" : "NEXT"} →</button>
           </div>
@@ -498,11 +569,11 @@ export default function Game() {
   // Each player looks at the board from their own side: your army sits on the
   // bottom rank and your tray under it, exactly as it does for the other
   // player on their phone. Black therefore views the board rotated 180°.
-  const seatColor: Color = usion.userColor ?? "white";
+  const seatColor: Color = botMode ? "white" : usion.userColor ?? "white";
   const flipped = seatColor === "black";
   const viewIndex = (slot: number) => (flipped ? 15 - slot : slot);
   const topColor = otherColor(seatColor);
-  const seated = Boolean(usion.userColor);
+  const seated = botMode || Boolean(usion.userColor);
   const localElapsed = state.clockRunning
     ? Math.max(0, localNow - localTurnStartedAt)
     : 0;
@@ -514,13 +585,16 @@ export default function Game() {
     ...state.clocks,
     [state.turn]: localRemaining,
   };
-  const clocks = usion.active ? usion.remainingByColor : localClocks;
+  const clocks = hostedMatch ? usion.remainingByColor : localClocks;
   const lastMoveByOpponent = Boolean(
     state.lastMove &&
-    usion.userColor &&
-    state.lastMove.color !== usion.userColor,
+    (botMode
+      ? state.lastMove.color === "black"
+      : usion.userColor && state.lastMove.color !== usion.userColor),
   );
-  const opponentLabel = seated
+  const opponentLabel = botMode
+    ? "BOT"
+    : seated
     ? usion.opponentProfile?.displayName ?? "OPPONENT"
     : topColor === "white"
       ? "PLAYER 1"
@@ -528,15 +602,17 @@ export default function Game() {
 
   return (
     <main className="game-shell play-screen">
-      <ConnectionNotice
-        connection={usion.connection}
-        playerCount={usion.playerIds.length}
-        error={usion.error}
-        inviting={usion.inviting}
-        onInvite={() => void usion.invite()}
-        recover={usion.recover}
-      />
-      {usion.quickMessage && (
+      {!botMode && (
+        <ConnectionNotice
+          connection={usion.connection}
+          playerCount={usion.playerIds.length}
+          error={usion.error}
+          inviting={usion.inviting}
+          onInvite={() => void usion.invite()}
+          recover={usion.recover}
+        />
+      )}
+      {hostedMatch && usion.quickMessage && (
         <div
           className={`quick-message-toast message-${usion.quickMessage.from}`}
           key={usion.quickMessage.nonce}
@@ -554,14 +630,14 @@ export default function Game() {
         <ReserveTray
           color={topColor}
           label={opponentLabel}
-          avatarUrl={usion.opponentProfile?.avatarUrl}
+          avatarUrl={botMode ? null : usion.opponentProfile?.avatarUrl}
           showAvatar={seated}
           pieces={reserves[topColor]}
           pawnsFirst={false}
           active={turn === topColor && canInteract}
           clockMs={clocks[topColor]}
           clockPosition="above"
-          clockRunning={!winner && turn === topColor && (usion.active ? usion.clockRunning : state.clockRunning)}
+          clockRunning={!winner && turn === topColor && (hostedMatch ? usion.clockRunning : state.clockRunning)}
           clockAction={(
             <button
               className="clock-action rules-clock-action"
@@ -609,8 +685,8 @@ export default function Game() {
           active={turn === seatColor && canInteract}
           clockMs={clocks[seatColor]}
           clockPosition="below"
-          clockRunning={!winner && turn === seatColor && (usion.active ? usion.clockRunning : state.clockRunning)}
-          clockAction={usion.active ? (
+          clockRunning={!winner && turn === seatColor && (hostedMatch ? usion.clockRunning : state.clockRunning)}
+          clockAction={hostedMatch ? (
             <button
               className="clock-action message-clock-action"
               onClick={() => setChatOpen((open) => !open)}
@@ -626,7 +702,7 @@ export default function Game() {
         />
       </div>
 
-      {usion.active && chatOpen && (
+      {hostedMatch && chatOpen && (
         <aside
           className="quick-message-panel"
           id="quick-message-panel"
@@ -665,9 +741,9 @@ export default function Game() {
             <button
               className="primary-button"
               onClick={usion.recordStatus === "error" ? usion.retryRecord : resetGame}
-              disabled={usion.active && !usion.canRematch && usion.recordStatus !== "error"}
+              disabled={hostedMatch && !usion.canRematch && usion.recordStatus !== "error"}
             >
-              {!usion.active
+              {!hostedMatch
                 ? "REMATCH"
                 : usion.recordStatus === "saving" || usion.recordStatus === "idle"
                   ? "SAVING RECORD…"
@@ -677,7 +753,7 @@ export default function Game() {
                       ? "REMATCH"
                       : "WAITING FOR HOST"}
             </button>
-            <button className="text-button" onClick={() => setScreen("home")}>BACK HOME</button>
+            <button className="text-button" onClick={backHome}>BACK HOME</button>
           </section>
         </div>
       )}

@@ -103,8 +103,8 @@ test("online actions render optimistically before the shared-state echo", async 
     readFile(new URL("app/Game.tsx", root), "utf8"),
     readFile(new URL("app/useUsionGame.ts", root), "utf8"),
   ]);
-  assert.match(game, /if \(usion\.active\) \{\s*await usion\.commit/);
-  assert.match(game, /const state = usion\.active \? usion\.state : localState/);
+  assert.match(game, /if \(hostedMatch\) \{\s*await usion\.commit/);
+  assert.match(game, /const state = hostedMatch \? usion\.state : localState/);
   assert.match(hook, /setOptimisticState\(preview\)/);
   assert.match(hook, /state:\s*displayState/);
 });
@@ -141,6 +141,7 @@ test("a second player arrives through the platform invite, never self-play", asy
   // Inside Usions the primary action is the invite, not a local game.
   assert.match(game, /usion\.embedded/);
   assert.match(game, /INVITE A FRIEND/);
+  assert.match(game, /PLAY VS BOT/);
 });
 
 test("finished matches feed the rating board and Game Center result cards", async () => {
@@ -167,7 +168,7 @@ test("each player views the board from their own side", async () => {
 
   // Black must not play from the top of the board on their own phone: the
   // view rotates so your army is always the near side, with your tray under it.
-  assert.match(game, /const seatColor: Color = usion\.userColor \?\? "white"/);
+  assert.match(game, /const seatColor: Color = botMode \? "white" : usion\.userColor \?\? "white"/);
   assert.match(game, /const flipped = seatColor === "black"/);
   assert.match(game, /const viewIndex = \(slot: number\) => \(flipped \? 15 - slot : slot\)/);
   assert.match(game, /const index = viewIndex\(slot\);/);
@@ -204,10 +205,10 @@ test("a hosted match is unplayable until both seats are connected", async () => 
   // alternating-turn fallback inside Usions.
   assert.match(
     game,
-    /const canInteract = !winner && \(usion\.embedded \? usion\.canAct : true\)/,
+    /botMode \? turn === "white" : usion\.embedded \? usion\.canAct : true/,
   );
   // The lobby holds the screen until the match has actually started.
-  assert.match(game, /if \(usion\.embedded && !usion\.started && screen !== "rules"\)/);
+  assert.match(game, /if \(usion\.embedded && !botMode && !usion\.started && screen !== "rules"\)/);
   assert.match(game, /players in the room/);
 
   // `started` opens only after both seats and the assigned room's recovered
@@ -218,6 +219,22 @@ test("a hosted match is unplayable until both seats are connected", async () => 
   // Being hosted is asserted before the SDK resolves, so a slow or failed SDK
   // can never fall back to offline play inside Usions.
   assert.ok(hook.indexOf("setEmbedded(true)") < hook.indexOf("while (!window.Usion"));
+});
+
+test("a hosted player can start an isolated bot match immediately", async () => {
+  const [game, bot] = await Promise.all([
+    readFile(new URL("app/Game.tsx", root), "utf8"),
+    readFile(new URL("app/chess-bot.ts", root), "utf8"),
+  ]);
+
+  assert.match(game, /const \[botMode, setBotMode\] = useState\(false\)/);
+  assert.match(game, /const hostedMatch = usion\.active && !botMode/);
+  assert.match(game, /const startBotGame = \(\) => \{/);
+  assert.match(game, /chooseBotAction\(current, "black"\)/);
+  assert.match(game, /const opponentLabel = botMode\s*\? "BOT"/);
+  assert.match(game, /!botMode \|\|[\s\S]*localState\.turn !== "black"/);
+  assert.match(bot, /export function getBotActions/);
+  assert.match(bot, /export function chooseBotAction/);
 });
 
 test("last moves, five-minute clocks, and preset messages are visible in-game", async () => {
@@ -301,7 +318,7 @@ test("the opponent's Usions name and avatar replace the generic label", async ()
   assert.match(hook, /setOpponentProfile\(profile\)/);
   assert.doesNotMatch(hook, /\/auth\/users\//);
   assert.match(game, /usion\.opponentProfile\?\.displayName \?\? "OPPONENT"/);
-  assert.match(game, /avatarUrl=\{usion\.opponentProfile\?\.avatarUrl\}/);
+  assert.match(game, /avatarUrl=\{botMode \? null : usion\.opponentProfile\?\.avatarUrl\}/);
   assert.match(game, /showAvatar=\{seated\}/);
   assert.match(styles, /\.clock-avatar img/);
   assert.match(styles, /\.clock-player-name/);

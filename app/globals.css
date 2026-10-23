@@ -105,12 +105,12 @@ h1 strong {
   font-size: 1.6rem; line-height: 1;
 }
 .lobby-seat.filled .lobby-avatar { background: var(--yellow); color: #3d176e; }
-.primary-button, .secondary-button, .icon-button, .text-button {
+.primary-button, .bot-button, .secondary-button, .icon-button, .text-button {
   cursor: pointer; border: 0; font-weight: 1000;
   transition: transform 150ms ease, filter 150ms ease;
 }
-.primary-button:hover, .secondary-button:hover, .icon-button:hover, .text-button:hover { filter: brightness(1.06); }
-.primary-button:active, .secondary-button:active, .icon-button:active, .text-button:active { transform: translateY(3px); }
+.primary-button:hover, .bot-button:hover, .secondary-button:hover, .icon-button:hover, .text-button:hover { filter: brightness(1.06); }
+.primary-button:active, .bot-button:active, .secondary-button:active, .icon-button:active, .text-button:active { transform: translateY(3px); }
 .primary-button {
   min-height: 62px; padding: 12px 25px; border-radius: 18px;
   background: var(--yellow); color: var(--ink);
@@ -118,6 +118,13 @@ h1 strong {
   font-size: 1.1rem; letter-spacing: .03em;
 }
 .primary-button span { margin-right: 8px; font-size: 1.35rem; }
+.bot-button {
+  min-height: 58px; padding: 12px 25px; border: 3px solid #d8c6ff; border-radius: 18px;
+  background: linear-gradient(135deg,#3c187e,#5b26bd); color: #fff8dc;
+  box-shadow: 0 7px 0 #2c1164,0 13px 26px rgba(42,13,78,.28);
+  font-size: 1.05rem; letter-spacing: .04em;
+}
+.bot-button span { margin-right: 8px; color: var(--yellow); font-size: 1.35rem; }
 .secondary-button {
   min-height: 54px; border: 3px solid rgba(255,255,255,.54); border-radius: 16px;
   background: rgba(255,255,255,.13); color: white;
@@ -527,6 +534,21 @@ h1 strong {
   .player-clock strong { font-size: .9rem; }
   .reserve-grid { padding: 4px; border-width: 3px; }
   .board { width: min(40svh,70vw,300px); padding: 6px; border-width: 5px; }
+}
+@media (max-height: 760px) {
+  .lobby-screen .mini-board-logo { width: 72px; margin-bottom: 10px; padding: 5px; border-width: 4px; border-radius: 14px; }
+  .lobby-screen .mini-board-logo span { font-size: 16px; }
+  .lobby-screen .eyebrow { margin-bottom: 4px; font-size: .68rem; }
+  .lobby-screen h1 span { font-size: 2.35rem; }
+  .lobby-screen h1 strong { margin-top: 5px; font-size: 1.2rem; }
+  .lobby-screen .lobby-seats { gap: 8px; margin-bottom: 8px; }
+  .lobby-screen .lobby-seat { gap: 3px; padding: 6px; }
+  .lobby-screen .lobby-avatar { width: 32px; height: 32px; font-size: 1.15rem; }
+  .lobby-screen .home-copy { margin: 9px auto 11px; font-size: .8rem; line-height: 1.25; }
+  .lobby-screen .home-actions { gap: 8px; }
+  .lobby-screen .primary-button,
+  .lobby-screen .bot-button,
+  .lobby-screen .secondary-button { min-height: 43px; padding-block: 7px; border-radius: 13px; font-size: .86rem; }
 }
 @media (max-height: 620px) {
   .game-stage { gap: 1px; }
