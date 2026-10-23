@@ -18,7 +18,7 @@ import {
   reduceChess,
   row,
 } from "./chess-engine";
-import { chooseBotAction } from "./chess-bot";
+import { BOT_DIFFICULTIES, chooseBotAction, type BotDifficulty } from "./chess-bot";
 import { QUICK_MESSAGES, useUsionGame } from "./useUsionGame";
 
 type Screen = "home" | "rules" | "game";
@@ -215,6 +215,42 @@ function ConnectionNotice({
   );
 }
 
+function BotDifficultyPicker({
+  onSelect,
+  onClose,
+}: {
+  onSelect: (difficulty: BotDifficulty) => void;
+  onClose: () => void;
+}) {
+  const levels = Object.keys(BOT_DIFFICULTIES) as BotDifficulty[];
+  return (
+    <div className="bot-level-overlay" role="presentation">
+      <section className="bot-level-card" role="dialog" aria-modal="true" aria-labelledby="bot-level-title">
+        <button className="bot-level-close" onClick={onClose} aria-label="Close">×</button>
+        <span className="bot-level-piece" aria-hidden="true">{GLYPHS.queen}</span>
+        <p>PLAY VS BOT</p>
+        <h2 id="bot-level-title">CHOOSE YOUR LEVEL</h2>
+        <div className="bot-level-list">
+          {levels.map((level, index) => {
+            const config = BOT_DIFFICULTIES[level];
+            return (
+              <button
+                className={`bot-level-option bot-level-${level}`}
+                key={level}
+                onClick={() => onSelect(level)}
+              >
+                <span className="bot-level-number">{index + 1}</span>
+                <span><strong>{config.label}</strong><small>{config.description}</small></span>
+                <i aria-hidden="true">›</i>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function Game() {
   const usion = useUsionGame();
   const [screen, setScreen] = useState<Screen>("home");
@@ -226,6 +262,8 @@ export default function Game() {
   const [soundOn, setSoundOn] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [botMode, setBotMode] = useState(false);
+  const [botSetupOpen, setBotSetupOpen] = useState(false);
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>("medium");
   const hostedMatch = usion.active && !botMode;
   const state = hostedMatch ? usion.state : localState;
   const { board, reserves, turn, winner, captures } = state;
@@ -291,7 +329,7 @@ export default function Game() {
       const actionTime = clockNow();
       setLocalState((current) => {
         if (current.turn !== "black" || current.winner) return current;
-        const action = chooseBotAction(current, "black");
+        const action = chooseBotAction(current, "black", botDifficulty);
         if (!action) return current;
         const elapsedMs = current.clockRunning
           ? Math.max(0, actionTime - localTurnStartedAt)
@@ -306,7 +344,7 @@ export default function Game() {
     }, 450);
 
     return () => clearTimeout(timer);
-  }, [botMode, localState.moveCount, localState.turn, localState.winner, localTurnStartedAt, screen]);
+  }, [botDifficulty, botMode, localState.moveCount, localState.turn, localState.winner, localTurnStartedAt, screen]);
 
   // A friend match is live only on the local Usions seat. Bot games stay
   // completely local and deliberately accept input only for white.
@@ -360,11 +398,13 @@ export default function Game() {
     setScreen("game");
   };
 
-  const startBotGame = () => {
+  const startBotGame = (difficulty: BotDifficulty) => {
     const startedAt = clockNow();
     setSelection(null);
     setChatOpen(false);
     setBotMode(true);
+    setBotSetupOpen(false);
+    setBotDifficulty(difficulty);
     setLocalState(
       reduceChess(createInitialChessState(), {
         type: "start",
@@ -380,6 +420,7 @@ export default function Game() {
     setSelection(null);
     setChatOpen(false);
     setBotMode(false);
+    setBotSetupOpen(false);
     setScreen("home");
   };
 
@@ -467,7 +508,7 @@ export default function Game() {
                   <span aria-hidden="true">♟</span>{" "}
                   {usion.inviting ? "OPENING…" : inRoom ? "INVITE ANOTHER FRIEND" : "INVITE A FRIEND"}
                 </button>
-                <button className="bot-button" onClick={startBotGame}>
+                <button className="bot-button" onClick={() => setBotSetupOpen(true)}>
                   <span aria-hidden="true">♛</span> PLAY VS BOT
                 </button>
                 <button className="secondary-button" onClick={() => setScreen("rules")}>HOW TO PLAY?</button>
@@ -476,6 +517,9 @@ export default function Game() {
           )}
           {usion.error && usion.connection !== "failed" && <p className="home-error">{usion.error}</p>}
         </section>
+        {botSetupOpen && (
+          <BotDifficultyPicker onSelect={startBotGame} onClose={() => setBotSetupOpen(false)} />
+        )}
       </main>
     );
   }
@@ -484,7 +528,7 @@ export default function Game() {
     // The lobby above owns every hosted session that has not started, so this
     // screen is only reached mid-match or outside the Usions host entirely.
     const primary = botMode
-      ? { label: "PLAY VS BOT", run: startBotGame }
+      ? { label: `PLAY ${BOT_DIFFICULTIES[botDifficulty].label} BOT`, run: () => startBotGame(botDifficulty) }
       : usion.embedded
       ? { label: "RETURN TO MATCH", run: () => setScreen("game") }
       : { label: "PRACTICE ON THIS DEVICE", run: resetGame };
@@ -511,7 +555,7 @@ export default function Game() {
               <span aria-hidden="true">♟</span> {primary.label}
             </button>
             {!usion.embedded && !botMode && (
-              <button className="bot-button" onClick={startBotGame}>
+              <button className="bot-button" onClick={() => setBotSetupOpen(true)}>
                 <span aria-hidden="true">♛</span> PLAY VS BOT
               </button>
             )}
@@ -522,6 +566,9 @@ export default function Game() {
         <button className="sound-button" onClick={() => setSoundOn((value) => !value)} aria-label={soundOn ? "Mute sound" : "Turn sound on"}>
           {soundOn ? "🔊" : "🔇"}
         </button>
+        {botSetupOpen && (
+          <BotDifficultyPicker onSelect={startBotGame} onClose={() => setBotSetupOpen(false)} />
+        )}
       </main>
     );
   }
@@ -593,7 +640,7 @@ export default function Game() {
       : usion.userColor && state.lastMove.color !== usion.userColor),
   );
   const opponentLabel = botMode
-    ? "BOT"
+    ? `BOT · ${BOT_DIFFICULTIES[botDifficulty].label}`
     : seated
     ? usion.opponentProfile?.displayName ?? "OPPONENT"
     : topColor === "white"

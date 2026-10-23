@@ -229,10 +229,17 @@ test("a hosted player can start an isolated bot match immediately", async () => 
 
   assert.match(game, /const \[botMode, setBotMode\] = useState\(false\)/);
   assert.match(game, /const hostedMatch = usion\.active && !botMode/);
-  assert.match(game, /const startBotGame = \(\) => \{/);
-  assert.match(game, /chooseBotAction\(current, "black"\)/);
-  assert.match(game, /const opponentLabel = botMode\s*\? "BOT"/);
+  assert.match(game, /const startBotGame = \(difficulty: BotDifficulty\) => \{/);
+  assert.match(game, /chooseBotAction\(current, "black", botDifficulty\)/);
+  assert.match(game, /const opponentLabel = botMode\s*\? `BOT · \$\{BOT_DIFFICULTIES\[botDifficulty\]\.label\}`/);
   assert.match(game, /!botMode \|\|[\s\S]*localState\.turn !== "black"/);
+  assert.match(game, /CHOOSE YOUR LEVEL/);
+  assert.match(game, /BotDifficultyPicker/);
+  assert.match(bot, /easy:[\s\S]*depth: 1/);
+  assert.match(bot, /medium:[\s\S]*depth: 2/);
+  assert.match(bot, /hard:[\s\S]*depth: 4/);
+  assert.match(bot, /function minimax/);
+  assert.match(bot, /threatenedMaterial/);
   assert.match(bot, /export function getBotActions/);
   assert.match(bot, /export function chooseBotAction/);
 });

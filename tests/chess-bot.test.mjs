@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chooseBotAction, getBotActions } from "../app/chess-bot.ts";
+import {
+  BOT_DIFFICULTIES,
+  chooseBotAction,
+  getBotActions,
+} from "../app/chess-bot.ts";
 import { createInitialChessState, reduceChess } from "../app/chess-engine.ts";
 
 test("the bot always chooses a legal black action after White moves", () => {
@@ -50,4 +54,34 @@ test("the bot never acts for the side whose turn has not arrived", () => {
   const initial = createInitialChessState();
   assert.deepEqual(getBotActions(initial, "black"), []);
   assert.equal(chooseBotAction(initial, "black"), null);
+});
+
+test("Easy, Medium, and Hard use increasingly deeper calculation", () => {
+  assert.deepEqual(Object.keys(BOT_DIFFICULTIES), ["easy", "medium", "hard"]);
+  assert.ok(BOT_DIFFICULTIES.easy.depth < BOT_DIFFICULTIES.medium.depth);
+  assert.ok(BOT_DIFFICULTIES.medium.depth < BOT_DIFFICULTIES.hard.depth);
+  assert.ok(BOT_DIFFICULTIES.easy.choicePool > BOT_DIFFICULTIES.medium.choicePool);
+  assert.equal(BOT_DIFFICULTIES.hard.choicePool, 1);
+});
+
+test("all three levels return legal moves without choosing from the whole tray blindly", () => {
+  const initial = reduceChess(createInitialChessState(), {
+    type: "start",
+    data: { color: "white" },
+  });
+  const whitePawn = initial.reserves.white.find((piece) => piece.type === "pawn");
+  const afterWhite = reduceChess(initial, {
+    type: "deploy",
+    data: { color: "white", pieceId: whitePawn.id, index: 12, elapsedMs: 500 },
+  });
+  const legal = getBotActions(afterWhite, "black");
+
+  for (const level of ["easy", "medium", "hard"]) {
+    const choice = chooseBotAction(afterWhite, "black", level);
+    assert.ok(choice, `${level} should choose a move`);
+    assert.ok(
+      legal.some((action) => JSON.stringify(action) === JSON.stringify(choice)),
+      `${level} must choose from the legal action set`,
+    );
+  }
 });

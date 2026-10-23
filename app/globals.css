@@ -125,6 +125,49 @@ h1 strong {
   font-size: 1.05rem; letter-spacing: .04em;
 }
 .bot-button span { margin-right: 8px; color: var(--yellow); font-size: 1.35rem; }
+.bot-level-overlay {
+  position: fixed; z-index: 30; inset: 0; display: grid; place-items: center;
+  padding: 18px; background: rgba(25,7,61,.78); backdrop-filter: blur(8px);
+}
+.bot-level-card {
+  position: relative; width: min(100%,420px); padding: 24px 18px 20px;
+  border: 4px solid rgba(255,255,255,.55); border-radius: 24px;
+  background: linear-gradient(155deg,#6930ce,#371477); color: white;
+  box-shadow: 0 12px 0 #251052,0 24px 60px rgba(18,4,43,.5); text-align: center;
+}
+.bot-level-close {
+  position: absolute; top: 10px; right: 12px; width: 36px; height: 36px;
+  border: 0; border-radius: 11px; background: rgba(255,255,255,.12); color: white;
+  cursor: pointer; font-size: 1.4rem; font-weight: 900;
+}
+.bot-level-piece {
+  display: grid; place-items: center; width: 62px; height: 62px; margin: 0 auto 9px;
+  border-radius: 18px; background: var(--yellow); color: var(--ink);
+  box-shadow: 0 6px 0 #d78d22; font-family: Georgia,"Times New Roman",serif; font-size: 2.3rem;
+}
+.bot-level-card > p { margin: 10px 0 3px; color: var(--yellow); font-size: .72rem; font-weight: 1000; letter-spacing: .18em; }
+.bot-level-card h2 { margin: 0 0 16px; font-size: 1.45rem; text-shadow: 0 3px 0 var(--purple-deep); }
+.bot-level-list { display: grid; gap: 10px; }
+.bot-level-option {
+  display: grid; grid-template-columns: 42px minmax(0,1fr) 18px; align-items: center; gap: 10px;
+  width: 100%; min-height: 68px; padding: 9px 12px; border: 3px solid rgba(255,255,255,.26);
+  border-radius: 16px; background: rgba(30,8,71,.45); color: white; cursor: pointer; text-align: left;
+  transition: transform 140ms ease,filter 140ms ease,border-color 140ms ease;
+}
+.bot-level-option:hover { transform: translateY(-2px); filter: brightness(1.12); border-color: var(--yellow); }
+.bot-level-option:active { transform: translateY(2px); }
+.bot-level-number {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px;
+  background: rgba(255,255,255,.14); color: var(--yellow); font-size: 1rem; font-weight: 1000;
+}
+.bot-level-option > span:nth-child(2) { min-width: 0; }
+.bot-level-option strong,.bot-level-option small { display: block; }
+.bot-level-option strong { color: var(--cream); font-size: 1rem; letter-spacing: .07em; }
+.bot-level-option small { margin-top: 3px; color: rgba(255,255,255,.7); font-size: .7rem; line-height: 1.25; }
+.bot-level-option i { color: var(--yellow); font-size: 1.7rem; font-style: normal; }
+.bot-level-easy .bot-level-number { background: #44b285; color: white; }
+.bot-level-medium .bot-level-number { background: #e6a62f; color: #3d176e; }
+.bot-level-hard .bot-level-number { background: #ed596c; color: white; }
 .secondary-button {
   min-height: 54px; border: 3px solid rgba(255,255,255,.54); border-radius: 16px;
   background: rgba(255,255,255,.13); color: white;
@@ -549,6 +592,12 @@ h1 strong {
   .lobby-screen .primary-button,
   .lobby-screen .bot-button,
   .lobby-screen .secondary-button { min-height: 43px; padding-block: 7px; border-radius: 13px; font-size: .86rem; }
+  .bot-level-card { padding: 14px 13px 13px; border-radius: 19px; }
+  .bot-level-piece { width: 46px; height: 46px; margin-bottom: 5px; border-radius: 14px; font-size: 1.8rem; }
+  .bot-level-card > p { margin-top: 7px; }
+  .bot-level-card h2 { margin-bottom: 10px; font-size: 1.15rem; }
+  .bot-level-list { gap: 7px; }
+  .bot-level-option { min-height: 57px; padding: 6px 9px; }
 }
 @media (max-height: 620px) {
   .game-stage { gap: 1px; }
